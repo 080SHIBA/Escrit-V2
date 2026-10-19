@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../lib/api.js';
+import { useAuthContext } from '../../lib/AuthContext.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import LifecycleStepper from '../../components/LifecycleStepper.jsx';
 import ItemPhoto from '../../components/ItemPhoto.jsx';
@@ -26,6 +27,7 @@ const TOUR_STEPS = [
 // through it. Always reachable from the dashboard.
 export default function LinkDetail() {
   const { id } = useParams();
+  const { seller } = useAuthContext();
   const [link, setLink] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState(null);
@@ -176,7 +178,7 @@ export default function LinkDetail() {
         ))}
       </div>
 
-      <SpotlightTour storageKey="escrit_seller_tour_linkdetail" steps={TOUR_STEPS} active={Boolean(transactions)} />
+      <SpotlightTour storageKey="escrit_seller_tour_linkdetail" userId={seller?._id} steps={TOUR_STEPS} active={Boolean(transactions)} />
     </div>
   );
 }

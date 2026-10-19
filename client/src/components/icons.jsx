@@ -2,6 +2,71 @@
 // instead of an icon library.
 const base = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
+export function HandshakeIcon({ width = 18, height = 18, className = '' }) {
+  return (
+    <img
+      src="https://uxwing.com/wp-content/themes/uxwing/download/business-professional-services/handshake-icon.svg"
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      className={`shrink-0 object-contain dark:invert ${className}`}
+    />
+  );
+}
+
+export function IdentityVerificationIcon({ width = 20, height = 20, className = '' }) {
+  return (
+    <img
+      src="https://uxwing.com/wp-content/themes/uxwing/download/crime-security-military-law/identity-verification-icon.svg"
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      className={`shrink-0 object-contain dark:invert ${className}`}
+    />
+  );
+}
+
+export function ShopIcon({ width = 18, height = 18, className = '' }) {
+  return (
+    <img
+      src="https://uxwing.com/wp-content/themes/uxwing/download/business-professional-services/shop-icon.svg"
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      className={`shrink-0 object-contain dark:invert ${className}`}
+    />
+  );
+}
+
+export function DashboardIcon({ width = 18, height = 18, className = '' }) {
+  return (
+    <img
+      src="https://uxwing.com/wp-content/themes/uxwing/download/web-app-development/four-squares-icon.svg"
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      className={`shrink-0 object-contain dark:invert ${className}`}
+    />
+  );
+}
+
+export function PriceOffersIcon({ width = 18, height = 18, className = '' }) {
+  return (
+    <img
+      src="https://uxwing.com/wp-content/themes/uxwing/download/e-commerce-currency-shopping/tags-line-icon.svg"
+      alt=""
+      aria-hidden="true"
+      width={width}
+      height={height}
+      className={`shrink-0 object-contain dark:invert ${className}`}
+    />
+  );
+}
+
 export function LockIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" {...base} {...props}>
@@ -68,6 +133,50 @@ export function BankIcon(props) {
       <path d="M5 11v7M9.5 11v7M14.5 11v7M19 11v7" />
       <path d="M3 20h18" />
     </svg>
+  );
+}
+
+export function PromotionCreditsIcon({ width = 18, height = 18, className = '', style = {} }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block shrink-0 bg-current ${className}`}
+      style={{
+        width,
+        height,
+        maskImage: 'url("/promotion-credits-icon.svg")',
+        maskPosition: 'center',
+        maskRepeat: 'no-repeat',
+        maskSize: 'contain',
+        WebkitMaskImage: 'url("/promotion-credits-icon.svg")',
+        WebkitMaskPosition: 'center',
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskSize: 'contain',
+        ...style,
+      }}
+    />
+  );
+}
+
+export function MyOrdersIcon({ width = 18, height = 18, className = '', style = {} }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block shrink-0 bg-current ${className}`}
+      style={{
+        width,
+        height,
+        maskImage: 'url("/my-orders-icon.png")',
+        maskPosition: 'center',
+        maskRepeat: 'no-repeat',
+        maskSize: 'contain',
+        WebkitMaskImage: 'url("/my-orders-icon.png")',
+        WebkitMaskPosition: 'center',
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskSize: 'contain',
+        ...style,
+      }}
+    />
   );
 }
 

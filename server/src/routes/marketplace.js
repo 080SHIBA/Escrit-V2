@@ -18,8 +18,12 @@ import { env } from '../config/env.js';
 import { ensureCheckoutPrice } from '../services/pricing.js';
 import { getPlatformSettings } from '../services/platformSettings.js';
 import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
+import { ListingDraft } from '../models/ListingDraft.js';
+import { SellerReport } from '../models/SellerReport.js';
+import { publicSellerName, sanitizePublicSeller } from '../utils/publicSellerName.js';
 
 export const marketplaceRouter = Router();
+export const listingWorkflowRouter = Router();
 
 const TYPE_CONFIG = {
   product: { Model: Product, Category: ProductCategory },
@@ -27,10 +31,47 @@ const TYPE_CONFIG = {
   service: { Model: Service, Category: ServiceCategory },
 };
 
+const publicListingsQuerySchema = Joi.object({
+  q: Joi.string().trim().max(100).allow('').default(''),
+  type: Joi.string().valid('all', 'product', 'course', 'service').default('all'),
+  category: Joi.string().trim().max(80).allow('').default(''),
+  cursor: Joi.number().integer().min(0).max(1000).default(0),
+  limit: Joi.number().integer().min(1).max(100).default(6),
+  sort: Joi.string().valid('newest', 'price-low', 'price-high', 'top-rated').default('newest'),
+});
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function publicListing(item, type) {
+  const seller = item.seller;
+  if (seller) sanitizePublicSeller(seller);
+  return {
+    id: String(item._id),
+    type,
+    title: item.title,
+    category: item.category,
+    price: type === 'service' ? item.basePrice : item.price,
+    coverUrl: item.images?.[0] || '',
+    sellerId: seller?._id ? String(seller._id) : String(item.seller),
+    sellerName: publicSellerName(seller),
+    sellerVerified: seller?.kycStatus === 'verified',
+    sellerAvatarUrl: seller?.profilePictureUrl || '',
+    sellerRatingAvg: Number(seller?.averageRating || 0),
+    sellerReviewCount: Number(seller?.reviewCount || 0),
+    ratingAvg: Number(item.averageRating || 0),
+    ratingCount: Number(item.reviewCount || 0),
+    isFeatured: Boolean(item.isFeatured),
+    createdAt: item.createdAt,
+  };
+}
+
 async function loadListing(listingType, listingId) {
   const config = TYPE_CONFIG[listingType];
   if (!config) throw new AppError(400, 'Unsupported listing type');
-  const item = await config.Model.findOne({ _id: listingId, isActive: true, isVerified: true }).populate('seller', 'businessName profilePictureUrl isDemoSeed');
+  const item = await config.Model.findOne({ _id: listingId, isActive: true, isVerified: true }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed');
+  if (item?.seller) sanitizePublicSeller(item.seller);
   if (!item) throw new AppError(404, 'Listing is no longer available');
   return item;
 }
@@ -130,10 +171,33 @@ marketplaceRouter.get('/me/analytics', requireAuth, asyncHandler(async (req, res
   const { commissionPercent } = await getPlatformSettings();
   const paid = transactions.filter((transaction) => paidStatuses.has(transaction.status));
   const grossPaidKobo = paid.reduce((sum, transaction) => sum + (transaction.buyerPriceKoboSnapshot || transaction.checkoutTotalKobo || 0) * (transaction.checkoutQuantity || 1), 0);
+  const transactionAmountKobo = (transaction) => (transaction.checkoutTotalKobo ?? transaction.buyerPriceKoboSnapshot ?? 0) * (transaction.checkoutQuantity || 1);
+  const awaitingPaymentKobo = transactions
+    .filter((transaction) => transaction.status === TX_STATUS.CREATED)
+    .reduce((sum, transaction) => sum + transactionAmountKobo(transaction), 0);
+  const heldInEscrowKobo = transactions
+    .filter((transaction) => [TX_STATUS.PAID_HELD, TX_STATUS.DISPUTED].includes(transaction.status))
+    .reduce((sum, transaction) => sum + transactionAmountKobo(transaction), 0);
+  const paidOutKobo = transactions
+    .filter((transaction) => [TX_STATUS.RELEASED, TX_STATUS.RESOLVED_RELEASED].includes(transaction.status) && transaction.payoutState === 'completed')
+    .reduce((sum, transaction) => {
+      const payout = [...(transaction.payoutLog || [])].reverse()
+        .find((entry) => entry.action === 'transfer_initiated');
+      const detail = payout?.detail || {};
+      if (Number.isFinite(detail.sellerBaseKobo) && Number.isFinite(detail.commissionKobo)) {
+        return sum + detail.sellerBaseKobo - detail.commissionKobo;
+      }
+      const base = (transaction.sellerPayoutBaseKobo || 0) * (transaction.checkoutQuantity || 1);
+      return sum + base - Math.floor(base * commissionPercent / 100);
+    }, 0);
   const estimatedSellerPayoutKobo = paid.reduce((sum, transaction) => {
     const base = (transaction.sellerPayoutBaseKobo || 0) * (transaction.checkoutQuantity || 1);
     return sum + base - Math.floor(base * commissionPercent / 100);
   }, 0);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+  const last30DaysPaid = paid.filter((transaction) => transaction.paidAt && new Date(transaction.paidAt) >= thirtyDaysAgo);
   const lastSevenDays = Array.from({ length: 7 }, (_, offset) => {
     const day = new Date();
     day.setHours(0, 0, 0, 0);
@@ -158,6 +222,11 @@ marketplaceRouter.get('/me/analytics', requireAuth, asyncHandler(async (req, res
     paidOrders: paid.length,
     grossPaidKobo,
     estimatedSellerPayoutKobo,
+    financialSummary: { awaitingPaymentKobo, heldInEscrowKobo, paidOutKobo },
+    last30Days: {
+      orders: transactions.filter((transaction) => transaction.createdAt >= thirtyDaysAgo).length,
+      grossPaidKobo: last30DaysPaid.reduce((sum, transaction) => sum + transactionAmountKobo(transaction), 0),
+    },
     heldOrders: transactions.filter((transaction) => transaction.status === TX_STATUS.PAID_HELD).length,
     disputedOrders: transactions.filter((transaction) => transaction.status === TX_STATUS.DISPUTED).length,
     directSales: transactions.filter((transaction) => [TX_STATUS.DIRECT_PAID, TX_STATUS.DIRECT_COMPLETED].includes(transaction.status)).length,
@@ -376,6 +445,7 @@ const createListingSchema = Joi.object({
   price: Joi.number().min(0).default(0),
   stock: Joi.number().min(0).default(1),
   condition: Joi.string().valid('new', 'used', 'refurbished').default('new'),
+  fulfillmentMethod: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download'),
   negotiable: Joi.boolean().default(false),
   refundable: Joi.boolean().default(false),
   deliveryOptions: Joi.array().items(Joi.object({
@@ -384,6 +454,9 @@ const createListingSchema = Joi.object({
     details: Joi.string().max(240).allow('').default(''),
   })).unique('method').max(2).default([{ method: 'pickup', fee: 0 }]),
   deliveryFormat: Joi.string().valid('self-paced', 'live').default('self-paced'),
+  format: Joi.string().valid('self-paced-videos', 'live-cohort', 'pdf-ebook'),
+  level: Joi.string().valid('beginner', 'intermediate', 'advanced'),
+  duration: Joi.string().max(120).allow('').default(''),
   curriculum: Joi.array().items(Joi.object({
     title: Joi.string().trim().min(1).max(120).required(),
     description: Joi.string().max(1000).allow('').default(''),
@@ -433,15 +506,221 @@ async function ensureCategory(type, name, requestedBy) {
   return { name: created.name, approved: false };
 }
 
+async function createMarketplaceListing(type, body, sellerId) {
+  const config = TYPE_CONFIG[type];
+  if (!config) throw new AppError(400, 'Unsupported listing type');
+  const seller = await User.findById(sellerId);
+  if (!seller) throw new AppError(404, 'Seller not found');
+  if (seller.kycStatus !== 'verified') throw new AppError(422, 'Complete identity verification in Profile & KYC before listing');
+
+  const priceNaira = type === 'service' ? Number(body.basePrice || 0) : Number(body.price || 0);
+  if (priceNaira < 100) throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more to use escrow');
+
+  const categoryResult = await ensureCategory(type, body.category, seller._id);
+  const payload = {
+    ...body,
+    seller: seller._id,
+    category: categoryResult.name,
+    categoryReviewStatus: categoryResult.approved ? 'approved' : 'pending',
+    images: Array.isArray(body.images) ? body.images : [],
+  };
+  if (type === 'product') {
+    payload.price = Number(body.price || 0);
+    payload.stock = Number(body.stock || 1);
+  }
+  if (type === 'course') {
+    payload.price = Number(body.price || 0);
+    payload.curriculum = body.curriculum?.length
+      ? body.curriculum
+      : [{ title: 'Course overview', description: body.description || '', videoUrl: '' }];
+    if (body.refundable && !body.refundConditions) throw new AppError(400, 'Refund conditions are required when refundable is true');
+  }
+  if (type === 'service') payload.basePrice = Number(body.basePrice || 0);
+
+  const item = await config.Model.create(payload);
+  let link;
+  try {
+    link = await Link.create({
+      sellerId: seller._id,
+      itemName: item.title,
+      itemDescription: type === 'course' && item.refundable
+        ? `${item.description || ''}\n\nRefund conditions: ${item.refundConditions}`.trim()
+        : item.description,
+      fulfillmentType: type,
+      listingType: type,
+      listingId: item._id,
+      refundable: Boolean(item.refundable),
+      scheduledDiscount: ['product', 'course'].includes(type) ? body.scheduledDiscount : null,
+      itemPhotoUrl: item.images[0] || null,
+      priceKobo: Math.round(priceNaira * 100),
+      checkoutPriceKobo: null,
+      checkoutBasePriceKobo: null,
+    });
+    item.escrowLinkId = link._id;
+    await item.save();
+  } catch (error) {
+    await Promise.all([
+      config.Model.deleteOne({ _id: item._id }),
+      link ? Link.deleteOne({ _id: link._id }) : Promise.resolve(),
+    ]);
+    throw error;
+  }
+  return item;
+}
+
+const listingDraftSchema = Joi.object({
+  status: Joi.string().valid('draft', 'live').default('draft'),
+  type: Joi.string().valid('product', 'service', 'course').required(),
+  title: Joi.string().max(80).allow('').default(''),
+  category: Joi.string().max(80).allow('').default(''),
+  description: Joi.string().max(1000).allow('').default(''),
+  price: Joi.number().min(0).default(0),
+  images: Joi.array().items(Joi.string().uri({ scheme: ['https'] })).max(5).default([]),
+  allowOffers: Joi.boolean().default(false),
+  condition: Joi.string().valid('new', 'used').default('new'),
+  fulfillment: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download').default('delivery'),
+  quantity: Joi.number().integer().min(1).max(100000).default(1),
+  deliveryTime: Joi.string().max(120).allow('').default(''),
+  format: Joi.string().valid('self-paced-videos', 'live-cohort', 'pdf-ebook').default('self-paced-videos'),
+  level: Joi.string().valid('beginner', 'intermediate', 'advanced').default('beginner'),
+  duration: Joi.string().max(120).allow('').default(''),
+}).unknown(false);
+
+function validatePublishableListing(listing) {
+  if (listing.title.trim().length < 5) throw new AppError(400, 'Add a title with at least 5 characters.');
+  if (!listing.category) throw new AppError(400, 'Choose a category.');
+  if (listing.description.trim().length < 20) throw new AppError(400, 'Add a description with at least 20 characters.');
+  if (listing.price <= 0) throw new AppError(400, 'Enter a price above zero.');
+  if (['product', 'course'].includes(listing.type) && listing.images.length < 1) throw new AppError(400, 'Add at least one photo.');
+  if (listing.type === 'service' && !listing.deliveryTime.trim()) throw new AppError(400, 'Add an estimated service delivery time.');
+  if (listing.type === 'course' && !listing.duration.trim()) throw new AppError(400, 'Add a course duration or number of lessons.');
+}
+
+function marketplacePayload(listing) {
+  const common = {
+    title: listing.title,
+    category: listing.category,
+    description: listing.description,
+    images: listing.images,
+  };
+  if (listing.type === 'product') {
+    const deliveryOptions = listing.fulfillment === 'delivery'
+      ? [{ method: 'seller_delivery', fee: 0 }]
+      : listing.fulfillment === 'pickup'
+        ? [{ method: 'pickup', fee: 0 }]
+        : listing.fulfillment === 'delivery-or-pickup'
+          ? [{ method: 'seller_delivery', fee: 0 }, { method: 'pickup', fee: 0 }]
+          : [{ method: 'pickup', fee: 0 }];
+    return {
+      ...common,
+      price: listing.price,
+      stock: listing.quantity,
+      condition: listing.condition,
+      fulfillmentMethod: listing.fulfillment,
+      deliveryOptions,
+      negotiable: listing.allowOffers,
+    };
+  }
+  if (listing.type === 'service') {
+    return { ...common, basePrice: listing.price, estimatedTime: listing.deliveryTime };
+  }
+  return {
+    ...common,
+    price: listing.price,
+    format: listing.format,
+    level: listing.level,
+    duration: listing.duration,
+    deliveryFormat: listing.format === 'live-cohort' ? 'live' : 'self-paced',
+    curriculum: [{ title: 'Course overview', description: listing.description, videoUrl: '' }],
+  };
+}
+
+listingWorkflowRouter.get('/', asyncHandler(async (req, res) => {
+  const { error, value } = publicListingsQuerySchema.validate(req.query);
+  if (error) throw new AppError(400, 'Enter valid listing filters.');
+
+  const filter = { isActive: true, isVerified: true };
+  if (value.category) filter.category = new RegExp(`^${escapeRegex(value.category)}$`, 'i');
+  if (value.q) {
+    const term = new RegExp(escapeRegex(value.q), 'i');
+    filter.$or = [{ title: term }, { description: term }, { category: term }];
+  }
+
+  const types = value.type === 'all' ? Object.keys(TYPE_CONFIG) : [value.type];
+  const pageSize = value.cursor + value.limit + 1;
+  const groups = await Promise.all(types.map(async (type) => {
+    const { Model } = TYPE_CONFIG[type];
+    const items = await Model.find(filter)
+      .sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1, _id: -1 })
+      .limit(pageSize)
+      .populate('seller', 'businessName displayName fullName profilePictureUrl kycStatus averageRating reviewCount')
+      .lean();
+    return items.map((item) => publicListing(item, type));
+  }));
+
+  const compare = (left, right) => {
+    if (value.sort === 'price-low') return left.price - right.price;
+    if (value.sort === 'price-high') return right.price - left.price;
+    if (value.sort === 'top-rated') {
+      return right.ratingAvg - left.ratingAvg || right.ratingCount - left.ratingCount;
+    }
+    return new Date(right.createdAt || 0) - new Date(left.createdAt || 0);
+  };
+  const ordered = groups.flat().sort(compare);
+  const items = ordered.slice(value.cursor, value.cursor + value.limit);
+  const hasMore = ordered.length > value.cursor + items.length;
+
+  res.json({
+    items,
+    nextCursor: hasMore ? String(value.cursor + items.length) : null,
+  });
+}));
+
+listingWorkflowRouter.use(requireAuth);
+listingWorkflowRouter.get('/draft', asyncHandler(async (req, res) => {
+  const draft = await ListingDraft.findOne({ seller: req.sellerId });
+  res.json({ draft });
+}));
+listingWorkflowRouter.post('/', asyncHandler(async (req, res) => {
+  const { error, value } = listingDraftSchema.validate(req.body, { abortEarly: false });
+  if (error) throw new AppError(400, 'Check the listing details and try again.');
+  if (value.status === 'draft') {
+    const draft = await ListingDraft.findOneAndUpdate(
+      { seller: req.sellerId },
+      { ...value, seller: req.sellerId },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    return res.status(200).json({ draft });
+  }
+  validatePublishableListing(value);
+  const item = await createMarketplaceListing(value.type, marketplacePayload(value), req.sellerId);
+  await ListingDraft.deleteOne({ seller: req.sellerId });
+  res.status(201).json({ item, listingType: value.type });
+}));
+listingWorkflowRouter.patch('/:id', asyncHandler(async (req, res) => {
+  const { error, value } = listingDraftSchema.validate(req.body, { abortEarly: false });
+  if (error) throw new AppError(400, 'Check the listing details and try again.');
+  if (value.status !== 'draft') throw new AppError(400, 'Published listings cannot be changed as drafts.');
+  const draft = await ListingDraft.findOneAndUpdate(
+    { _id: req.params.id, seller: req.sellerId },
+    { ...value },
+    { new: true, runValidators: true }
+  );
+  if (!draft) throw new AppError(404, 'Draft not found. Save again to create a new draft.');
+  res.json({ draft });
+}));
+
 marketplaceRouter.get('/overview', asyncHandler(async (_req, res) => {
   const [products, courses, services, reviews] = await Promise.all([
-    Product.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName isDemoSeed'),
-    Course.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName isDemoSeed'),
-    Service.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName isDemoSeed'),
-    Review.find({ comment: { $ne: '' } }).sort({ createdAt: -1 }).limit(6).populate('buyerId', 'businessName').populate('sellerId', 'businessName'),
+    Product.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
+    Course.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
+    Service.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
+    Review.find({ comment: { $ne: '' } }).sort({ createdAt: -1 }).limit(6).populate('buyerId', 'businessName').populate('sellerId', 'businessName displayName fullName'),
   ]);
 
   const allItems = [...products, ...courses, ...services];
+  allItems.forEach((item) => sanitizePublicSeller(item.seller));
+  reviews.forEach((review) => sanitizePublicSeller(review.sellerId));
   const links = await Link.find({ _id: { $in: allItems.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
   const checkoutPriceById = new Map(links.map((link) => [String(link._id), link.checkoutPriceKobo]));
@@ -461,12 +740,12 @@ marketplaceRouter.get('/overview', asyncHandler(async (_req, res) => {
 }));
 
 marketplaceRouter.get('/seller/:sellerId', asyncHandler(async (req, res) => {
-  const seller = await User.findById(req.params.sellerId).select('businessName profilePictureUrl bio createdAt averageRating reviewCount isDemoSeed');
+  const seller = await User.findById(req.params.sellerId).select('businessName displayName fullName profilePictureUrl bio city createdAt kycStatus onboarding.fulfilmentDefault isDemoSeed');
   if (!seller) throw new AppError(404, 'Seller not found');
   const [products, courses, services] = await Promise.all([
-    Product.find({ seller: seller._id, isActive: true, isVerified: true }).sort({ createdAt: -1 }),
-    Course.find({ seller: seller._id, isActive: true, isVerified: true }).sort({ createdAt: -1 }),
-    Service.find({ seller: seller._id, isActive: true, isVerified: true }).sort({ createdAt: -1 }),
+    Product.find({ seller: seller._id, isActive: true, isVerified: true, categoryReviewStatus: 'approved' }).sort({ createdAt: -1 }),
+    Course.find({ seller: seller._id, isActive: true, isVerified: true, categoryReviewStatus: 'approved' }).sort({ createdAt: -1 }),
+    Service.find({ seller: seller._id, isActive: true, isVerified: true, categoryReviewStatus: 'approved' }).sort({ createdAt: -1 }),
   ]);
   const listings = [
     ...products.map((item) => ({ ...item.toObject(), listingType: 'product' })),
@@ -476,13 +755,57 @@ marketplaceRouter.get('/seller/:sellerId', asyncHandler(async (req, res) => {
   const links = await Link.find({ _id: { $in: listings.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
   const checkoutPriceById = new Map(links.map((link) => [String(link._id), link.checkoutPriceKobo]));
+  const reviewStats = await Review.aggregate([
+    { $match: { sellerId: seller._id } },
+    { $lookup: { from: Transaction.collection.name, localField: 'transactionId', foreignField: '_id', as: 'transaction' } },
+    { $unwind: '$transaction' },
+    {
+      $match: {
+        $or: [
+          { listingType: 'service', 'transaction.status': { $in: [TX_STATUS.RELEASED, TX_STATUS.RESOLVED_RELEASED, TX_STATUS.DIRECT_COMPLETED] } },
+          { listingType: { $in: ['product', 'course'] }, 'transaction.status': { $in: [TX_STATUS.RELEASED, TX_STATUS.RESOLVED_RELEASED, TX_STATUS.DIRECT_PAID, TX_STATUS.DIRECT_COMPLETED] } },
+        ],
+      },
+    },
+    { $group: { _id: null, averageRating: { $avg: '$rating' }, reviewCount: { $sum: 1 } } },
+  ]);
+  const stats = reviewStats[0] || { averageRating: 0, reviewCount: 0 };
+  const publicName = publicSellerName(seller);
   res.json({
-    seller,
+    seller: {
+      _id: seller._id,
+      displayName: publicName,
+      profilePictureUrl: seller.profilePictureUrl,
+      bio: seller.bio,
+      city: seller.city,
+      createdAt: seller.createdAt,
+      identityVerified: seller.kycStatus === 'verified',
+      fulfilmentDefault: seller.onboarding?.fulfilmentDefault || '',
+      averageRating: stats.averageRating,
+      reviewCount: stats.reviewCount,
+    },
     listings: listings.map((item) => ({
       ...item,
       buyerPriceKobo: checkoutPriceById.get(String(item.escrowLinkId)) ?? null,
     })),
   });
+}));
+
+const sellerReportSchema = Joi.object({
+  reason: Joi.string().trim().min(5).max(1000).required(),
+});
+
+marketplaceRouter.post('/seller/:sellerId/report', requireAuth, validate(sellerReportSchema), asyncHandler(async (req, res) => {
+  if (!/^[\da-f]{24}$/i.test(req.params.sellerId)) throw new AppError(400, 'Enter a valid seller id');
+  if (String(req.params.sellerId) === String(req.sellerId)) throw new AppError(400, 'You cannot report your own storefront');
+  const sellerExists = await User.exists({ _id: req.params.sellerId });
+  if (!sellerExists) throw new AppError(404, 'Seller not found');
+  const report = await SellerReport.create({
+    sellerId: req.params.sellerId,
+    reporterId: req.sellerId,
+    reason: req.body.reason,
+  });
+  res.status(201).json({ ok: true, reportId: report.id });
 }));
 
 marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
@@ -492,7 +815,8 @@ marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Unsupported listing type' });
   }
 
-  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName profilePictureUrl isDemoSeed');
+  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed');
+  items.forEach((item) => sanitizePublicSeller(item.seller));
   const links = await Link.find({ _id: { $in: items.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
   const checkoutPriceById = new Map(links.map((link) => [String(link._id), link.checkoutPriceKobo]));
@@ -503,8 +827,9 @@ marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
 marketplaceRouter.get('/:type/:id', asyncHandler(async (req, res) => {
   const config = TYPE_CONFIG[req.params.type];
   if (!config) throw new AppError(400, 'Unsupported listing type');
-  const item = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true }).populate('seller', 'businessName profilePictureUrl bio isDemoSeed');
+  const item = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true }).populate('seller', 'businessName displayName fullName profilePictureUrl bio isDemoSeed');
   if (!item) throw new AppError(404, 'Listing not found');
+  if (item.seller) sanitizePublicSeller(item.seller);
   const link = item.escrowLinkId ? await Link.findById(item.escrowLinkId) : null;
   const buyerPriceKobo = link ? await ensureCheckoutPrice(link) : null;
   res.json({ item: { ...item.toObject(), buyerPriceKobo } });
@@ -634,82 +959,6 @@ marketplaceRouter.post('/:type/:id/reviews', requireAuth, validate(reviewSchema)
 }));
 
 marketplaceRouter.post('/:type', requireAuth, validate(createListingSchema), asyncHandler(async (req, res) => {
-  const { type } = req.params;
-  const config = TYPE_CONFIG[type];
-  if (!config) {
-    return res.status(400).json({ error: 'Unsupported listing type' });
-  }
-
-  const seller = await User.findById(req.sellerId);
-  if (!seller) {
-    return res.status(404).json({ error: 'Seller not found' });
-  }
-  if (!seller.fullName || !seller.nin) throw new AppError(422, 'Complete your identity details in Profile settings before listing');
-  if (!seller.bankAccount) {
-    throw new AppError(422, 'Add a verified bank account before publishing a marketplace listing');
-  }
-
-  const priceNaira = type === 'service' ? Number(req.body.basePrice || 0) : Number(req.body.price || 0);
-  if (priceNaira < 100) {
-    throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more to use escrow');
-  }
-
-  const categoryResult = await ensureCategory(type, req.body.category, seller._id);
-  const payload = {
-    ...req.body,
-    seller: seller._id,
-    category: categoryResult.name,
-    categoryReviewStatus: categoryResult.approved ? 'approved' : 'pending',
-    images: Array.isArray(req.body.images) ? req.body.images : [],
-  };
-
-  if (type === 'product') {
-    payload.price = Number(req.body.price || 0);
-    payload.stock = Number(req.body.stock || 1);
-  }
-
-  if (type === 'course') {
-    payload.price = Number(req.body.price || 0);
-    payload.curriculum = req.body.curriculum.length ? req.body.curriculum : [{ title: 'Course overview', description: req.body.description || '', videoUrl: '' }];
-    if (req.body.refundable && !req.body.refundConditions) {
-      return res.status(400).json({ error: 'Refund conditions are required when refundable is true' });
-    }
-  }
-
-  if (type === 'service') {
-    payload.basePrice = Number(req.body.basePrice || 0);
-  }
-
-  const item = await config.Model.create(payload);
-  let link;
-  try {
-    if (priceNaira >= 100) {
-      link = await Link.create({
-        sellerId: seller._id,
-        itemName: item.title,
-        itemDescription: type === 'course' && item.refundable
-          ? `${item.description || ''}\n\nRefund conditions: ${item.refundConditions}`.trim()
-          : item.description,
-        fulfillmentType: type,
-        listingType: type,
-        listingId: item._id,
-        refundable: Boolean(item.refundable),
-        scheduledDiscount: ['product', 'course'].includes(type) ? req.body.scheduledDiscount : null,
-        itemPhotoUrl: item.images[0] || null,
-        priceKobo: Math.round(priceNaira * 100),
-        checkoutPriceKobo: null,
-        checkoutBasePriceKobo: null,
-      });
-      item.escrowLinkId = link._id;
-      await item.save();
-    }
-  } catch (error) {
-    await Promise.all([
-      config.Model.deleteOne({ _id: item._id }),
-      link ? Link.deleteOne({ _id: link._id }) : Promise.resolve(),
-    ]);
-    throw error;
-  }
-
+  const item = await createMarketplaceListing(req.params.type, req.body, req.sellerId);
   res.status(201).json({ item });
 }));

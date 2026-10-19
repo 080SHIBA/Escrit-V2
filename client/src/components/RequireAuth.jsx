@@ -13,6 +13,6 @@ export default function RequireAuth({ children }) {
       </div>
     );
   }
-  if (status === 'anon') return <Navigate to="/login" replace />;
+  if (status === 'anon') return <Navigate to="/sign-in" replace />;
   return children;
 }

@@ -18,6 +18,7 @@ const linkSchema = new mongoose.Schema(
 
     itemName: { type: String, required: true, trim: true },
     itemDescription: { type: String, trim: true, default: '' },
+    termsSnapshot: { type: String, trim: true, default: '' },
     fulfillmentType: { type: String, enum: ['product', 'course', 'service'], default: 'product' },
     listingType: { type: String, enum: ['product', 'course', 'service'], default: null },
     listingId: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -32,6 +33,7 @@ const linkSchema = new mongoose.Schema(
 
     // Off stops new checkouts; orders already in progress are unaffected.
     active: { type: Boolean, default: true, index: true },
+    expiresAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

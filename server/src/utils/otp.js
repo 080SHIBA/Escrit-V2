@@ -4,6 +4,7 @@ import crypto from 'crypto';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -30,5 +31,22 @@ export function generateResetToken() {
 }
 
 export function verifyResetToken(token, hash, expiresAt) {
+  return isLive(hash, expiresAt) && sha256(token) === hash;
+}
+
+export function generateVerificationToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  return {
+    token,
+    hash: sha256(token),
+    expiresAt: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+  };
+}
+
+export function hashVerificationToken(token) {
+  return sha256(token);
+}
+
+export function verifyVerificationToken(token, hash, expiresAt) {
   return isLive(hash, expiresAt) && sha256(token) === hash;
 }

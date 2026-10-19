@@ -41,7 +41,7 @@ const FIELD = 'mt-1 w-full border border-line px-3 py-2 bg-input focus:border-in
 export default function CreateLink() {
   usePageTitle('New payment link');
   const navigate = useNavigate();
-  const { hasBankAccount } = useAuthContext();
+  const { hasBankAccount, seller } = useAuthContext();
   const [form, setForm] = useState({ itemName: '', itemDescription: '', priceNaira: '', itemPhotoUrl: '' });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -49,6 +49,15 @@ export default function CreateLink() {
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
   // The API enforces this too; showing it here avoids a failed submit.
+  if (seller?.kycStatus !== 'verified') {
+    return (
+      <div className="certificate p-6 text-center">
+        <h1 className="mb-2 font-display text-xl">Verify your identity first</h1>
+        <p className="mx-auto mb-5 max-w-sm text-ink/60">Identity verification and a verified bank account are required before creating payment links.</p>
+        <Link to="/settings" className="inline-flex min-h-11 items-center rounded-lg bg-ink px-5 font-medium text-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Go to Profile &amp; KYC</Link>
+      </div>
+    );
+  }
   if (!hasBankAccount) {
     return (
       <div className="certificate p-6 text-center animate-fade-in-up">
@@ -144,7 +153,7 @@ export default function CreateLink() {
           {loading ? 'Creating…' : 'Create link'}
         </button>
       </form>
-      <SpotlightTour storageKey="escrit_seller_tour_createlink" steps={TOUR_STEPS} />
+      <SpotlightTour storageKey="escrit_seller_tour_createlink" userId={seller?._id} steps={TOUR_STEPS} />
     </div>
   );
 }

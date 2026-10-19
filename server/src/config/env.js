@@ -79,6 +79,14 @@ export const env = {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
   },
 
+  shopify: {
+    apiKey: process.env.SHOPIFY_API_KEY || null,
+    apiSecret: process.env.SHOPIFY_API_SECRET || null,
+    redirectUri: process.env.SHOPIFY_REDIRECT_URI || null,
+    tokenEncryptionKey: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || null,
+    apiVersion: process.env.SHOPIFY_API_VERSION || '2026-10',
+  },
+
   // Transactional email over Brevo's HTTPS API (Render's free tier blocks SMTP).
   brevo: {
     apiKey: process.env.BREVO_API_KEY || null,

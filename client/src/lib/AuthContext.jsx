@@ -21,6 +21,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true') {
+      try {
+        const demoSeller = window.localStorage.getItem('escrit:auth-demo-seller');
+        if (demoSeller) {
+          setSeller(JSON.parse(demoSeller));
+          setAccessToken('demo-auth-token');
+          setStatus('authed');
+          return;
+        }
+      } catch {
+        setStatus('anon');
+        return;
+      }
+      setStatus('anon');
+      return;
+    }
     api
       .refresh()
       .then(async ({ accessToken }) => {
@@ -31,10 +47,27 @@ export function AuthProvider({ children }) {
       .catch(() => setStatus('anon'));
   }, [loadSeller]);
 
+  useEffect(() => {
+    if (status !== 'authed' || seller?.kycStatus !== 'pending') return undefined;
+    const refreshPendingVerification = () => {
+      if (document.visibilityState === 'visible') loadSeller();
+    };
+    const timer = window.setInterval(refreshPendingVerification, 30000);
+    window.addEventListener('focus', refreshPendingVerification);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshPendingVerification);
+    };
+  }, [status, seller?.kycStatus, loadSeller]);
+
   const login = useCallback(
-    async (accessToken) => {
+    async (accessToken, sessionSeller = null) => {
       setAccessToken(accessToken);
-      await loadSeller();
+      if (sessionSeller) setSeller(sessionSeller);
+      else await loadSeller();
+      if (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true' && accessToken === 'demo-auth-token' && sessionSeller) {
+        window.localStorage.setItem('escrit:auth-demo-seller', JSON.stringify(sessionSeller));
+      }
       setStatus('authed');
     },
     [loadSeller]
@@ -44,10 +77,21 @@ export function AuthProvider({ children }) {
     try {
       await api.logout();
     } finally {
+      if (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true') {
+        try {
+          window.localStorage.removeItem('escrit:auth-demo-seller');
+        } catch {
+          // The in-memory session is cleared even if browser storage is unavailable.
+        }
+      }
       setAccessToken(null);
       setSeller(null);
       setStatus('anon');
     }
+  }, []);
+
+  const updateSeller = useCallback((updates) => {
+    setSeller((current) => current ? { ...current, ...updates } : updates);
   }, []);
 
   const value = {
@@ -57,6 +101,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     refreshSeller: loadSeller,
+    updateSeller,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

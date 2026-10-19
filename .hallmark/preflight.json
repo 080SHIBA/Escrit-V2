@@ -1,0 +1,9 @@
+{
+  "scanned_at": "2026-10-13",
+  "framework": "React 18 + Vite 5",
+  "font_stack": "Tomorrow + Geist + JetBrains Mono",
+  "palette": "Midnight OKLCH custom properties with light and dark themes in client/src/styles/tokens.css",
+  "motion": "Tailwind CSS animations; no animation library dependency",
+  "spacing": "Named 4-point --space-* scale in client/src/styles/tokens.css",
+  "design_system": "Design system created in root design.md"
+}

@@ -18,6 +18,8 @@ import { ProductCategory, CourseCategory, ServiceCategory } from '../models/List
 import { getPlatformSettings } from '../services/platformSettings.js';
 import { getConfiguredModes } from '../services/paymentMode.js';
 import { env } from '../config/env.js';
+import { KycSubmission } from '../models/KycSubmission.js';
+import { privateKycAssetUrl } from '../services/privateKycStorage.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -68,10 +70,39 @@ adminRouter.post('/disputes/:id/resolve', validate(resolveSchema), asyncHandler(
 }));
 
 adminRouter.get('/kyc', asyncHandler(async (_req, res) => {
-  const users = await User.find({ kycStatus: 'pending', isDemoSeed: { $ne: true } })
-    .select('email businessName fullName nin idDocumentUrl kycStatus createdAt')
+  const submissions = await KycSubmission.find({ status: 'pending' })
+    .select('+idNumber +idFrontPublicId +idFrontResourceType +idFrontFormat +idBackPublicId +idBackResourceType +idBackFormat +selfiePublicId +selfieResourceType +selfieFormat')
+    .populate('userId', 'email businessName')
     .sort({ createdAt: 1 });
-  res.json({ users });
+  const submissionUserIds = submissions.map((submission) => submission.userId?._id).filter(Boolean);
+  const legacyUsers = await User.find({
+    kycStatus: 'pending',
+    isDemoSeed: { $ne: true },
+    _id: { $nin: submissionUserIds },
+  })
+    .select('email businessName fullName nin idDocumentUrl kycStatus createdAt')
+    .sort({ createdAt: 1 })
+    .lean();
+  res.json({
+    users: [
+      ...submissions.filter((submission) => submission.userId).map((submission) => ({
+        _id: String(submission.userId._id),
+        email: submission.userId.email,
+        businessName: submission.userId.businessName,
+        fullName: submission.legalName,
+        dob: submission.dob,
+        idType: submission.idType,
+        idNumber: submission.idNumber,
+        idFrontUrl: privateKycAssetUrl(submission.idFrontPublicId, submission.idFrontResourceType, submission.idFrontFormat),
+        idBackUrl: submission.idBackPublicId
+          ? privateKycAssetUrl(submission.idBackPublicId, submission.idBackResourceType, submission.idBackFormat)
+          : '',
+        selfieUrl: privateKycAssetUrl(submission.selfiePublicId, submission.selfieResourceType, submission.selfieFormat),
+        createdAt: submission.createdAt,
+      })),
+      ...legacyUsers,
+    ],
+  });
 }));
 
 const kycReviewSchema = Joi.object({
@@ -80,6 +111,13 @@ const kycReviewSchema = Joi.object({
 });
 
 adminRouter.post('/kyc/:userId/review', validate(kycReviewSchema), asyncHandler(async (req, res) => {
+  const submission = await KycSubmission.findOne({ userId: req.params.userId });
+  if (submission) {
+    submission.status = req.body.status;
+    submission.reviewReason = req.body.status === 'rejected' ? req.body.note : '';
+    submission.reviewedAt = new Date();
+    await submission.save();
+  }
   const user = await User.findByIdAndUpdate(req.params.userId, {
     kycStatus: req.body.status,
     kycReviewNote: req.body.note,
@@ -260,4 +298,3 @@ adminRouter.delete('/demo-data', requireOwner, asyncHandler(async (_req, res) =>
     },
   });
 }));
-

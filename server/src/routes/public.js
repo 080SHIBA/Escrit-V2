@@ -1,5 +1,5 @@
-// Buyer-facing routes, no login required: view the item and the seller's
-// verified name, pay, then confirm or dispute. Routes never write escrow
+// Buyer-facing routes, no login required: view the item and seller's public
+// display name, pay, then confirm or dispute. Routes never write escrow
 // status themselves; that goes through services/escrow.js.
 //
 // A link is shared by all buyers. Each checkout creates its own
@@ -20,9 +20,15 @@ import { generateReference } from '../utils/reference.js';
 import { env } from '../config/env.js';
 import { ensureCheckoutPrice } from '../services/pricing.js';
 import { Course } from '../models/Course.js';
+import { recordFunnelEvent } from '../services/funnel.js';
+import { publicSellerName } from '../utils/publicSellerName.js';
 
 export const publicRouter = Router();
 publicRouter.use(publicLimiter);
+
+function linkTermsSnapshot(link) {
+  return link.termsSnapshot || link.itemDescription || 'The seller will confirm delivery details with you before checkout.';
+}
 
 async function loadLink(req) {
   const link = await Link.findById(req.params.linkId);
@@ -36,18 +42,19 @@ async function loadTransaction(req) {
   return tx;
 }
 
-// The item plus the seller's bank-verified name. The account number is
-// never exposed, and no single buyer's status appears here.
+// The item and the seller's public identity. Bank and legal identity details
+// are never exposed, and no single buyer's status appears here.
 publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
   const link = await loadLink(req);
   const checkoutPriceKobo = await ensureCheckoutPrice(link);
-  const seller = await User.findById(link.sellerId);
+  const seller = await User.findById(link.sellerId).select('displayName businessName fullName isDemoSeed');
 
   res.json({
     link: {
       id: link.id,
       itemName: link.itemName,
       itemDescription: link.itemDescription,
+      termsSnapshot: linkTermsSnapshot(link),
       itemPhotoUrl: link.itemPhotoUrl,
       priceKobo: link.priceKobo,
       checkoutPriceKobo,
@@ -56,8 +63,9 @@ publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
       active: link.active,
     },
     seller: {
-      businessName: seller.businessName,
-      verifiedAccountName: seller.bankAccount?.resolvedAccountName ?? null,
+      id: String(seller._id),
+      displayName: publicSellerName(seller),
+      businessName: publicSellerName(seller),
       demoOnly: Boolean(seller.isDemoSeed),
     },
   });
@@ -65,6 +73,7 @@ publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
 
 const checkoutSchema = Joi.object({
   phone: Joi.string().allow('').default(''),
+  termsAccepted: Joi.boolean().valid(true).required(),
 });
 
 // Starts a new order (Transaction) and hands the buyer to Flutterwave.
@@ -73,6 +82,9 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
   const link = await loadLink(req);
   if (!link.active) {
     throw new AppError(409, 'This link is no longer accepting payment');
+  }
+  if (link.expiresAt && link.expiresAt <= new Date()) {
+    throw new AppError(410, 'This payment link has expired');
   }
     const checkoutMode = link.fulfillmentType === 'service' ? 'direct' : 'escrow';
 
@@ -96,7 +108,14 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
     buyerUserId: buyer._id,
     buyerEmail: buyer.email,
     buyerPhone: req.body.phone || null,
+    termsAcceptedAt: new Date(),
+    termsSnapshot: linkTermsSnapshot(link),
   });
+  recordFunnelEvent('terms_accepted', {
+    userId: buyer._id,
+    linkId: String(link._id),
+    transactionId: String(tx._id),
+  }).catch((error) => console.error('[funnel] could not record terms_accepted', error.message));
 
   const flutterwaveTx = await initializeTransaction({
     email: buyer.email,
@@ -130,6 +149,7 @@ publicRouter.get('/:linkId/t/:txId', requireAuth, asyncHandler(async (req, res) 
       id: link.id,
       itemName: link.itemName,
       itemDescription: link.itemDescription,
+      termsSnapshot: tx.termsSnapshot || linkTermsSnapshot(link),
       itemPhotoUrl: link.itemPhotoUrl,
       priceKobo: link.priceKobo,
       checkoutPriceKobo,
@@ -137,8 +157,8 @@ publicRouter.get('/:linkId/t/:txId', requireAuth, asyncHandler(async (req, res) 
       refundable: link.refundable,
     },
     seller: {
-      businessName: seller.businessName,
-      verifiedAccountName: seller.bankAccount?.resolvedAccountName ?? null,
+      id: String(seller._id),
+      businessName: seller.displayName || seller.businessName,
       demoOnly: Boolean(seller.isDemoSeed),
     },
     courseAccess,

@@ -63,7 +63,7 @@ export default function MarketplaceSearchHub() {
   }, [listings, query, scope]);
 
   return (
-    <section className="border-y border-line bg-surface/85" aria-labelledby="search-hub-title">
+    <section className="search-hub border-y border-line bg-surface" aria-labelledby="search-hub-title">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -75,10 +75,10 @@ export default function MarketplaceSearchHub() {
 
         <label className="mt-5 block">
           <span className="sr-only">Search products, services, and courses</span>
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try podcast gear, family photography, or Excel basics" className="w-full rounded-md border border-line-strong bg-input px-4 py-3 text-sm shadow-card focus:border-forest-700 sm:text-base" />
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try podcast gear, family photography, or Excel basics" className="w-full rounded-lg border border-line-strong bg-input px-4 py-3 text-sm focus:border-accent sm:text-base" />
         </label>
         <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Search category">
-          {TYPES.map(({ key, label }) => <button key={key} type="button" role="tab" aria-selected={scope === key} onClick={() => setScope(key)} className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${scope === key ? 'border-forest-700 bg-forest-700 text-white dark:border-seal dark:bg-seal dark:text-forest-950' : 'border-line text-ink/60 hover:border-forest-700/50'}`}>{label}</button>)}
+          {TYPES.map(({ key, label }) => <button key={key} type="button" role="tab" aria-selected={scope === key} onClick={() => setScope(key)} className={`min-h-11 rounded-full border px-4 py-2 text-xs font-medium transition-colors ${scope === key ? 'border-accent bg-accent text-accent-ink' : 'border-line text-ink/70 hover:border-accent/50 hover:text-ink'}`}>{label}</button>)}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="text-ink/50">Popular goals</span>{GOALS.map((goal) => <button key={goal} type="button" onClick={() => { setScope('all'); setQuery(goal); }} className="rounded-full bg-forest-50 px-3 py-1.5 text-forest-800 transition-colors hover:bg-forest-100 dark:bg-forest-50 dark:text-ink dark:hover:bg-forest-100">{goal}</button>)}</div>
 

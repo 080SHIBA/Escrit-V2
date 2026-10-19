@@ -70,22 +70,27 @@ function layoutCard(rect) {
 const sameRect = (a, b) =>
   a && b && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
 
-export default function SpotlightTour({ storageKey, steps, active = true, onDone }) {
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === '1');
+export default function SpotlightTour({ storageKey, userId, steps, active = true, onDone }) {
+  const scopedStorageKey = userId ? `${storageKey}:${userId}` : storageKey;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(scopedStorageKey) === '1');
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState(null);
   const [card, setCard] = useState(null);
   const direction = useRef(1); // 1 = moving forward, -1 = moving back (used when skipping)
+
+  useLayoutEffect(() => {
+    setDismissed(localStorage.getItem(scopedStorageKey) === '1');
+  }, [scopedStorageKey]);
 
   const running = active && !dismissed;
   const step = steps[stepIndex];
   const isLast = stepIndex === steps.length - 1;
 
   const finish = useCallback(() => {
-    localStorage.setItem(storageKey, '1');
+    localStorage.setItem(scopedStorageKey, '1');
     setDismissed(true);
     onDone?.();
-  }, [storageKey, onDone]);
+  }, [scopedStorageKey, onDone]);
 
   const next = useCallback(() => {
     direction.current = 1;
@@ -160,6 +165,10 @@ export default function SpotlightTour({ storageKey, steps, active = true, onDone
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [rect]);
+
+  useEffect(() => {
+    if (running && rect && card) localStorage.setItem(scopedStorageKey, '1');
+  }, [running, rect, card, scopedStorageKey]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -254,6 +263,9 @@ export const SELLER_TOUR_KEYS = [
   'escrit_seller_tour_linkdetail',
 ];
 
-export function resetTours(storageKeys) {
-  storageKeys.forEach(resetTour);
+export function resetTours(storageKeys, userId) {
+  storageKeys.forEach((storageKey) => {
+    resetTour(storageKey);
+    if (userId) resetTour(`${storageKey}:${userId}`);
+  });
 }

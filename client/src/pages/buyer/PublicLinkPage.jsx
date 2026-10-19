@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import LifecycleStepper from '../../components/LifecycleStepper.jsx';
@@ -39,9 +39,12 @@ function lastOrderKey(linkId) {
 }
 
 export default function PublicLinkPage() {
-  const { linkId, txId } = useParams();
+  const { linkId: routeLinkId, txId: routeTxId, id: escrowLinkId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const linkId = routeLinkId || escrowLinkId;
+  const txId = routeTxId || searchParams.get('transactionId') || undefined;
   const { status: authStatus, login } = useAuthContext();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -56,7 +59,9 @@ export default function PublicLinkPage() {
   const [googleCreated, setGoogleCreated] = useState(false);
   const [noShowReason, setNoShowReason] = useState('');
   const [disputing, setDisputing] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const pollRef = useRef(null);
+  const previewTrackedRef = useRef(false);
 
   usePageTitle(data?.link?.itemName || 'Pay securely', { suffix: !data?.link?.itemName });
 
@@ -64,15 +69,23 @@ export default function PublicLinkPage() {
   useEffect(() => {
     if (txId) return;
     const savedTxId = localStorage.getItem(lastOrderKey(linkId));
-    if (savedTxId) navigate(`/r/${linkId}/t/${savedTxId}`, { replace: true });
-  }, [linkId, txId, navigate]);
+    if (savedTxId && location.pathname.startsWith('/r/')) navigate(`/r/${linkId}/t/${savedTxId}`, { replace: true });
+  }, [linkId, txId, location.pathname, navigate]);
 
   useEffect(() => {
     let cancelled = false;
     function load(silent) {
       const fetcher = txId ? api.getPublicTransaction(linkId, txId) : api.getPublicLink(linkId);
       fetcher
-        .then((d) => !cancelled && setData(d))
+        .then((d) => {
+          if (cancelled) return;
+          setData(d);
+          if (!previewTrackedRef.current) {
+            previewTrackedRef.current = true;
+            api.trackFunnelEvent('link_preview_viewed', linkId, txId || '')
+              .catch((cause) => console.error('[funnel] could not record link_preview_viewed', cause));
+          }
+        })
         .catch((err) => !cancelled && !silent && setError(err.message));
     }
     load(false);
@@ -85,15 +98,21 @@ export default function PublicLinkPage() {
 
   async function pay(e) {
     e.preventDefault();
+    if (!termsAccepted) {
+      setActionError('Review and accept the transaction terms before continuing.');
+      return;
+    }
     if (authStatus !== 'authed') {
-      const next = encodeURIComponent(location.pathname);
+      const next = encodeURIComponent(txId
+        ? `/r/${linkId}/t/${txId}`
+        : `/r/${linkId}`);
       navigate(`/login?next=${next}`);
       return;
     }
     setActionError(null);
     setPaying(true);
     try {
-      const { authorizationUrl, transactionId } = await api.checkout(linkId);
+      const { authorizationUrl, transactionId } = await api.checkout(linkId, { termsAccepted });
       localStorage.setItem(lastOrderKey(linkId), transactionId);
       window.location.href = authorizationUrl; // selected provider's hosted checkout
     } catch (err) {
@@ -106,9 +125,12 @@ export default function PublicLinkPage() {
   const signInWithGoogle = useCallback(async (idToken) => {
     setActionError(null);
     try {
-      const { accessToken, accountCreated } = await api.googleLogin(idToken);
-      await login(accessToken);
+      const { accessToken, accountCreated, returnTo, seller: sessionSeller } = await api.googleLogin(idToken, `/r/${linkId}${txId ? `/t/${txId}` : ''}`);
+        await login(accessToken, sessionSeller || null);
       setGoogleCreated(accountCreated);
+        if (returnTo || sessionSeller?.pendingEscrowReturn) {
+          navigate('/onboarding', { replace: true });
+        }
     } catch (err) {
       setActionError(err.message || 'Google sign-in could not be completed.');
     }
@@ -192,6 +214,8 @@ export default function PublicLinkPage() {
 
   const { link, seller, transaction } = data;
   const status = transaction?.status; // undefined until checkout starts
+  const termsSnapshot = transaction?.termsSnapshot || link.termsSnapshot || link.itemDescription || '';
+  const escrowCheckout = link.fulfillmentType !== 'service';
 
   return (
     <div className="animate-fade-in-up">
@@ -200,13 +224,13 @@ export default function PublicLinkPage() {
         className="flex items-center justify-center gap-4 sm:gap-6 text-[11px] sm:text-xs text-ink/60 mb-5 flex-wrap"
       >
         <span className="flex items-center gap-1.5">
-          <LockIcon width={14} height={14} /> Funds held, not sent directly
+          <LockIcon width={14} height={14} /> {escrowCheckout ? 'Funds held, not sent directly' : 'Direct service payment'}
         </span>
         <span className="flex items-center gap-1.5">
-          <ShieldCheckIcon width={14} height={14} /> Bank-verified seller
+          <ShieldCheckIcon width={14} height={14} /> Seller details available
         </span>
         <span className="flex items-center gap-1.5">
-          <ClockIcon width={14} height={14} /> Funds release after delivery confirmation
+          <ClockIcon width={14} height={14} /> {escrowCheckout ? 'Funds release after delivery confirmation' : 'Payment is sent after the charge is confirmed'}
         </span>
       </div>
 
@@ -226,6 +250,12 @@ export default function PublicLinkPage() {
         />
 
         <p className="text-3xl font-mono font-medium mb-1">{link.checkoutPriceKobo == null ? 'Price unavailable' : `₦${(link.checkoutPriceKobo / 100).toLocaleString()}`}</p>
+        {termsSnapshot && (
+          <div className="my-4 rounded-lg border border-line bg-paper-2 p-4">
+            <h2 className="text-sm font-semibold">Transaction terms</h2>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{termsSnapshot}</p>
+          </div>
+        )}
         {link.fulfillmentType === 'product' && link.refundable && (
           <p className="mb-4 text-xs text-ink/55">Refundable pickup: if the seller records a no-show, 95% of the item price is automatically refunded and a disclosed 5% no-show fee is retained.</p>
         )}
@@ -238,13 +268,7 @@ export default function PublicLinkPage() {
 
         <div className="text-sm border-t border-line pt-4 min-w-0" data-tour="verified-name">
           <p className="text-ink/60">Seller details</p>
-          <p className="font-medium break-words">{seller.businessName}</p>
-          {seller.verifiedAccountName && (
-            <p className="text-ink/60 mt-1 flex items-start gap-1.5 break-words">
-              <ShieldCheckIcon width={14} height={14} className="text-released shrink-0 mt-0.5" />
-              <span>Bank-verified as <span className="text-ink font-medium">{seller.verifiedAccountName}</span></span>
-            </p>
-          )}
+          <Link to={`/marketplace/seller/${seller.id}`} className="font-medium break-words hover:underline">{seller.businessName}</Link>
         </div>
       </div>
 
@@ -259,7 +283,16 @@ export default function PublicLinkPage() {
         {!status && link.active && link.checkoutPriceKobo != null && (
           authStatus === 'authed' ? (
             <form onSubmit={pay} className="space-y-3">
-              <button disabled={paying || seller.demoOnly} className="w-full bg-ink text-paper py-3 font-medium disabled:opacity-50 hover:bg-ink/90 transition-colors rounded-lg">
+              <label className="flex min-h-11 items-start gap-3 text-sm text-ink/75">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 shrink-0 accent-accent"
+                  checked={termsAccepted}
+                  onChange={(event) => setTermsAccepted(event.target.checked)}
+                />
+                <span>I have reviewed and agree to the transaction terms shown above.</span>
+              </label>
+              <button disabled={paying || seller.demoOnly || !termsAccepted} className="w-full bg-ink text-paper py-3 font-medium disabled:opacity-50 hover:bg-ink/90 transition-colors rounded-lg">
                 {paying ? 'Redirecting to secure checkout…' : link.fulfillmentType === 'product' || link.fulfillmentType === 'course' ? 'Buy with escrow' : 'Book and pay directly'}
               </button>
               <p className="text-xs text-ink/50 text-center">{link.fulfillmentType === 'product' ? 'Your payment stays held until product delivery is confirmed.' : link.fulfillmentType === 'course' ? 'Your course access is released after payment is verified.' : 'Your service payment is sent directly to the seller after the charge is confirmed.'}</p>
@@ -269,8 +302,14 @@ export default function PublicLinkPage() {
             <div className="space-y-3">
               <p className="text-sm text-ink/65">Sign in or create an account to save this order and continue to secure checkout.</p>
               <GoogleSignInButton onCredential={signInWithGoogle} onError={setActionError} />
-              <Link to={`/login?next=${encodeURIComponent(location.pathname)}`} className="block w-full rounded-lg bg-ink px-4 py-3 text-center text-sm font-medium text-paper">Sign in to buy</Link>
-              <Link to={`/register?intent=buyer&next=${encodeURIComponent(location.pathname)}`} className="block w-full rounded-lg border border-line px-4 py-3 text-center text-sm font-medium">Create buyer account</Link>
+              <Link to={`/login?returnTo=${encodeURIComponent(txId ? `/r/${linkId}/t/${txId}` : `/r/${linkId}`)}`} className="block min-h-11 w-full rounded-lg bg-ink px-4 py-3 text-center text-sm font-medium text-paper">Sign in to buy</Link>
+              <Link
+                to={`/register?intent=buyer&returnTo=${encodeURIComponent(txId ? `/r/${linkId}/t/${txId}` : `/r/${linkId}`)}`}
+                onClick={() => api.trackFunnelEvent('registration_started', linkId, txId || '').catch((cause) => console.error('[funnel] could not record registration_started', cause))}
+                className="block min-h-11 w-full rounded-lg border border-line px-4 py-3 text-center text-sm font-medium"
+              >
+                Create an account
+              </Link>
             </div>
           )
         )}
@@ -447,7 +486,7 @@ export default function PublicLinkPage() {
       {actionError && <p className="text-dispute text-sm mt-3 animate-fade-in-up" role="alert">{actionError}</p>}
       {kycRequired && <Link to={`/settings?next=${encodeURIComponent(location.pathname)}`} className="mt-2 inline-block text-sm font-medium underline underline-offset-4">Complete identity details in Profile settings</Link>}
 
-      <SpotlightTour storageKey="escrit_buyer_tour" steps={TOUR_STEPS} active={Boolean(data) && !status} />
+      <SpotlightTour storageKey="escrit_buyer_tour" steps={TOUR_STEPS} active={Boolean(data) && !status && escrowCheckout} />
     </div>
   );
 }

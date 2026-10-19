@@ -11,6 +11,7 @@ import * as paymentProvider from './paymentProvider.js';
 import { Product } from '../models/Product.js';
 import { getPlatformSettings } from './platformSettings.js';
 import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
+import { isAutomaticReleaseDue } from '../../../shared/orderState.js';
 
 /**
  * CREATED -> PAID_HELD. Called after a verified payment success (webhook
@@ -37,6 +38,7 @@ export async function markPaidAndHeld(tx) {
       await tx.save();
       return tx;
     }
+
   }
   return tx;
 }
@@ -87,18 +89,18 @@ async function settleDirectPurchase(tx) {
   if (!link || !['course', 'service'].includes(link.fulfillmentType)) {
     throw new AppError(409, 'Direct checkout is only available for courses and services');
   }
-  await payOutToSeller(tx, `Escrit: direct ${link.fulfillmentType} purchase`);
+  await payOutToSeller(tx, `Escrit: direct ${link.fulfillmentType} purchase`, [TX_STATUS.CREATED]);
   tx.status = TX_STATUS.DIRECT_PAID;
   await tx.save();
   return tx;
 }
 
-async function claimSettlementOperation(tx, operation) {
+async function claimSettlementOperation(tx, operation, allowedStatuses = [TX_STATUS.PAID_HELD]) {
   const stateField = operation === 'payout' ? 'payoutState' : 'refundState';
   const timestampField = operation === 'payout' ? 'payoutProcessingAt' : 'refundProcessingAt';
   if (tx[stateField] === 'completed') return false;
   const claimed = await Transaction.findOneAndUpdate(
-    { _id: tx._id, [stateField]: { $in: ['idle', 'failed'] } },
+    { _id: tx._id, status: { $in: allowedStatuses }, [stateField]: { $in: ['idle', 'failed'] } },
     { $set: { [stateField]: 'processing', [timestampField]: new Date() } },
     { new: true }
   );
@@ -127,14 +129,18 @@ export async function reconcileWithPaymentProvider(tx) {
   return tx;
 }
 
-async function payOutToSeller(tx, reason) {
-  const claimed = await claimSettlementOperation(tx, 'payout');
+async function payOutToSeller(tx, reason, allowedStatuses = [TX_STATUS.PAID_HELD]) {
+  const claimed = await claimSettlementOperation(tx, 'payout', allowedStatuses);
   if (!claimed) return null;
   const link = await Link.findById(tx.linkId);
-  if (!link) throw new AppError(500, 'This transaction has no associated payment link');
+  if (!link) {
+    await Transaction.updateOne({ _id: tx._id }, { $set: { payoutState: 'failed' } });
+    throw new AppError(500, 'This transaction has no associated payment link');
+  }
 
   const seller = await User.findById(link.sellerId);
   if (!seller?.bankAccount?.accountNumber || !seller.bankAccount.bankCode) {
+    await Transaction.updateOne({ _id: tx._id }, { $set: { payoutState: 'failed' } });
     throw new AppError(500, 'Seller has no payout destination on file');
   }
 
@@ -177,6 +183,14 @@ export async function releaseOnBuyerConfirmation(tx) {
   return tx;
 }
 
+export async function releaseAfterDeliveryDeadline(tx, now = new Date()) {
+  if (!isAutomaticReleaseDue(tx, now)) return tx;
+  await payOutToSeller(tx, 'Escrit: 72-hour delivery confirmation window elapsed');
+  tx.status = TX_STATUS.RELEASED;
+  await tx.save();
+  return tx;
+}
+
 export async function completeDirectService(tx, sellerId) {
   if (tx.status !== TX_STATUS.DIRECT_PAID) throw new AppError(409, 'This direct service order is not awaiting completion');
   const link = await Link.findById(tx.linkId);
@@ -202,24 +216,21 @@ export async function raiseDispute(tx, reason, evidence = {}) {
   if (link?.fulfillmentType === 'course' && !link.refundable) {
     throw new AppError(409, 'This course is non-refundable and is not eligible for an escrow dispute');
   }
-  tx.disputeReason = reason;
-  tx.disputeRaisedAt = new Date();
+  const update = {
+    $set: { status: TX_STATUS.DISPUTED, disputeReason: reason, disputeRaisedAt: new Date() },
+  };
   if (evidence.text || evidence.mediaUrl) {
-    tx.evidence.push({ submittedBy: tx.buyerUserId, party: 'buyer', text: evidence.text || '', mediaUrl: evidence.mediaUrl || '' });
+    update.$push = {
+      evidence: { submittedBy: tx.buyerUserId, party: 'buyer', text: evidence.text || '', mediaUrl: evidence.mediaUrl || '' },
+    };
   }
-  if (link?.fulfillmentType === 'product' && tx.fulfillmentStatus === 'DELIVERED') {
-    tx.complaintLogged = true;
-    tx.complaintReason = reason;
-    await payOutToSeller(tx, 'Escrit: delivery confirmed before buyer complaint');
-    tx.status = TX_STATUS.RESOLVED_RELEASED;
-    tx.resolutionNote = 'Delivery had already been confirmed. The buyer complaint was recorded for admin review, and the seller payout was released.';
-    tx.resolvedAt = new Date();
-    await tx.save();
-    return tx;
-  }
-  tx.status = TX_STATUS.DISPUTED;
-  await tx.save();
-  return tx;
+  const disputed = await Transaction.findOneAndUpdate(
+    { _id: tx._id, status: TX_STATUS.PAID_HELD, payoutState: { $in: ['idle', 'failed'] } },
+    update,
+    { new: true },
+  );
+  if (!disputed) throw new AppError(409, 'A payout is already being processed; this order can no longer be disputed.');
+  return disputed;
 }
 
 async function refundNoShow(tx, amountKobo, reason) {
@@ -326,11 +337,11 @@ export async function resolveDispute(tx, outcome, note) {
   }
 
   if (outcome === 'release') {
-    await payOutToSeller(tx, 'Escrit: dispute resolved in seller favor');
+    await payOutToSeller(tx, 'Escrit: dispute resolved in seller favor', [TX_STATUS.DISPUTED]);
     tx.status = TX_STATUS.RESOLVED_RELEASED;
   } else if (outcome === 'refund') {
     const link = await Link.findById(tx.linkId);
-    await claimSettlementOperation(tx, 'refund');
+    await claimSettlementOperation(tx, 'refund', [TX_STATUS.DISPUTED]);
     let refund;
     try {
       refund = await paymentProvider.refundTransaction({

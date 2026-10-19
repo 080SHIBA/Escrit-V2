@@ -31,6 +31,44 @@ const cartItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const onboardingSchema = new mongoose.Schema(
+  {
+    goals: { type: [{ type: String, enum: ['Buy', 'Sell', 'Escrow'] }], default: [] },
+    interests: { type: [{ type: String, enum: ['Products', 'Courses', 'Services'] }], default: [] },
+    categories: {
+      type: [{
+        type: String,
+        enum: ['Fashion', 'Electronics', 'Home & living', 'Beauty & health', 'Food & groceries', 'Digital goods', 'Design services', 'Tech services'],
+      }],
+      default: [],
+    },
+    city: { type: String, default: '', trim: true, maxlength: 100 },
+    sellerTypes: { type: [{ type: String, enum: ['Products', 'Courses', 'Services'] }], default: [] },
+    displayName: { type: String, default: '', trim: true, maxlength: 80 },
+    fulfilmentDefault: { type: String, enum: ['', 'delivery', 'pickup', 'both'], default: '' },
+    verificationIntent: {
+      identity: { type: String, enum: ['', 'soon', 'planned', 'later'], default: '' },
+      bank: { type: String, enum: ['', 'soon', 'planned', 'later'], default: '' },
+    },
+    currentStep: {
+      type: String,
+      enum: ['welcome', 'buy', 'sell1', 'sell2', 'sell3', 'escrow', 'trust', 'done', 'return', 'escrow-welcome', 'escrow-preview'],
+      default: 'welcome',
+    },
+    flow: { type: String, enum: ['new-user', 'escrow-link'], default: 'new-user' },
+    completed: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const escrowReturnSchema = new mongoose.Schema(
+  {
+    linkId: { type: String, required: true },
+    transactionId: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -40,13 +78,24 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ['user', 'admin', 'owner'], default: 'user' },
     isDemoSeed: { type: Boolean, default: false },
     fullName: { type: String, default: '' },
+    accountIntents: {
+      type: [{ type: String, enum: ['Buy', 'Sell', 'Escrow links'] }],
+      default: [],
+    },
+    onboarding: { type: onboardingSchema, default: () => ({}) },
+    pendingEscrowReturn: { type: escrowReturnSchema, default: null },
+    escrowRecipientPromptEligible: { type: Boolean, default: false },
+    escrowRecipientPromptShownAt: { type: Date, default: null },
+    displayName: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    city: { type: String, default: '' },
     bio: { type: String, default: '', maxlength: 500 },
     averageRating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
     nin: { type: String, default: '' },
     profilePictureUrl: { type: String, default: '' },
     idDocumentUrl: { type: String, default: '' },
-    kycStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+    kycStatus: { type: String, enum: ['none', 'pending', 'verified', 'rejected'], default: 'none' },
     kycReviewNote: { type: String, default: '' },
     kycReviewedAt: { type: Date, default: null },
     bankAccount: { type: bankAccountSchema, default: null },
@@ -61,6 +110,8 @@ const userSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     otpCodeHash: { type: String, default: null, select: false },
     otpExpiresAt: { type: Date, default: null, select: false },
+    emailVerificationTokenHash: { type: String, default: null, select: false },
+    emailVerificationTokenExpiresAt: { type: Date, default: null, select: false },
 
     resetTokenHash: { type: String, default: null, select: false },
     resetTokenExpiresAt: { type: Date, default: null, select: false },
@@ -74,8 +125,12 @@ const userSchema = new mongoose.Schema(
 userSchema.set('toJSON', {
   transform: (_doc, ret) => {
     delete ret.passwordHash;
+    delete ret.nin;
+    delete ret.idDocumentUrl;
     delete ret.otpCodeHash;
     delete ret.otpExpiresAt;
+    delete ret.emailVerificationTokenHash;
+    delete ret.emailVerificationTokenExpiresAt;
     delete ret.resetTokenHash;
     delete ret.resetTokenExpiresAt;
     ret.isAdmin = ['admin', 'owner'].includes(ret.role) || env.adminEmails.includes(String(ret.email).toLowerCase());
@@ -89,6 +144,14 @@ userSchema.set('toJSON', {
 userSchema.index(
   { googleId: 1 },
   { unique: true, partialFilterExpression: { googleId: { $type: 'string' } }, name: 'googleId_unique_string' },
+);
+userSchema.index(
+  { emailVerificationTokenHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { emailVerificationTokenHash: { $type: 'string' } },
+    name: 'email_verification_token_hash_unique',
+  },
 );
 
 export const User = mongoose.model('User', userSchema);

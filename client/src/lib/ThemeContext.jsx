@@ -12,11 +12,11 @@ function getSystemPref() {
 function applyResolvedTheme(resolved) {
   document.documentElement.classList.toggle('dark', resolved === 'dark');
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0A0E17' : '#F8FAFC');
+  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#111522' : '#F5F6FA');
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => localStorage.getItem(STORAGE_KEY) || 'system');
+  const [theme, setThemeState] = useState(() => localStorage.getItem(STORAGE_KEY) || 'dark');
   const [resolved, setResolved] = useState(() => (theme === 'system' ? getSystemPref() : theme));
 
   useEffect(() => {

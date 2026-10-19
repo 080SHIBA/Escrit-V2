@@ -171,12 +171,12 @@ export default function Marketplace() {
   const displayedItems = visibleItems.slice(0, displayLimit);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="marketplace-page mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="eyebrow">ESCRIT MARKETPLACE</p>
-          <h1 className="mt-2 font-display text-3xl sm:text-5xl">Find your next good thing</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">Shop products, discover courses, and compare services from independent sellers. Every eligible checkout is protected by escrow.</p>
+          <h1 className="mt-2 font-display text-3xl sm:text-5xl">Compare before you commit.</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">Shop products, discover courses, and compare services from independent sellers. Eligible product checkouts are protected by escrow.</p>
         </div>
         <Link
           to={`/marketplace/new/${type}`}
@@ -217,7 +217,7 @@ export default function Marketplace() {
         ))}
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_12rem]">
+      <div className="market-filters mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_12rem]">
         <label className="sr-only" htmlFor="market-search">Search listings</label>
         <input id="market-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search listings or sellers" className="min-w-0 rounded-lg border border-line bg-input px-3 py-2.5 text-sm" />
         <label className="sr-only" htmlFor="market-category">Category</label>
@@ -231,7 +231,7 @@ export default function Marketplace() {
         </select>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem_auto]">
+      <div className="market-filters market-filters--secondary mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem_auto]">
         <label className="text-xs text-ink/55">Minimum price (₦)<input type="number" min="0" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 text-sm" placeholder="Any" /></label>
         <label className="text-xs text-ink/55">Maximum price (₦)<input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 text-sm" placeholder="Any" /></label>
         <label className="text-xs text-ink/55">Minimum rating<select value={minRating} onChange={(event) => setMinRating(event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 text-sm"><option value="0">Any rating</option><option value="3">3 stars & up</option><option value="4">4 stars & up</option><option value="4.5">4.5 stars & up</option></select></label>
@@ -254,7 +254,7 @@ export default function Marketplace() {
           ))}
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="listing-grid mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {displayedItems.map((item) => {
             const image = item.images?.[0] || FALLBACK_IMAGES[type];
             const priceText =
@@ -264,12 +264,12 @@ export default function Marketplace() {
             const isQuickViewOpen = quickViewId === item._id;
 
             return (
-              <article key={item._id} className="group min-w-0 overflow-hidden rounded-lg border border-line bg-surface shadow-card transition-shadow hover:shadow-card-md">
+              <article key={item._id} className="listing-card group min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-all hover:-translate-y-1 hover:border-accent/40 hover:shadow-card-md">
                 <div className="relative aspect-[4/3] overflow-hidden bg-line/30">
                   <Link to={`/marketplace/${type}/${item._id}`} aria-label={`View ${item.title}`}>
                     <img src={image} alt={item.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                   </Link>
-                  <button type="button" onClick={() => toggleFavorite(item)} aria-label={favoriteIds.has(`${type}:${item._id}`) ? `Remove ${item.title} from saved listings` : `Save ${item.title}`} title="Save listing" className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-paper/95 text-ink shadow-sm">
+                  <button type="button" onClick={() => toggleFavorite(item)} aria-label={favoriteIds.has(`${type}:${item._id}`) ? `Remove ${item.title} from saved listings` : `Save ${item.title}`} title="Save listing" className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-paper/95 text-ink shadow-sm transition-colors hover:border-accent hover:text-accent">
                     <HeartIcon filled={favoriteIds.has(`${type}:${item._id}`)} />
                   </button>
                   {type === 'product' && item.stock < 1 && <span className="absolute bottom-2 left-2 rounded bg-paper/95 px-2 py-1 text-[10px] font-medium">Sold out</span>}
@@ -282,7 +282,7 @@ export default function Marketplace() {
 
                   <div>
                     <h2 className="min-h-10 font-display text-sm leading-5 sm:text-base"><Link to={`/marketplace/${type}/${item._id}`} className="line-clamp-2 hover:underline">{item.title}</Link></h2>
-                    <p className="mt-1 line-clamp-1 text-xs text-ink/55">{item.seller?.businessName || 'Escrit seller'}</p>
+                    <Link to={`/marketplace/seller/${item.seller?._id}`} onClick={(event) => event.stopPropagation()} className="mt-1 block line-clamp-1 text-xs text-ink/55 hover:text-accent hover:underline">{item.seller?.displayName || item.seller?.businessName || 'Escrit seller'}</Link>
                   </div>
 
                   <div className="flex min-h-7 items-center justify-between gap-2">
@@ -297,10 +297,10 @@ export default function Marketplace() {
                       {isQuickViewOpen ? 'Less details' : 'Quick view'}
                     </button>
                     {type !== 'service' ? (
-                      <button type="button" onClick={() => addToCart(item)} disabled={item.seller?.isDemoSeed || type === 'product' && item.stock < 1} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-ink px-2.5 py-2 text-[11px] font-medium text-paper transition-colors hover:bg-ink/90 disabled:opacity-50 sm:px-3">
+                      <button type="button" onClick={() => addToCart(item)} disabled={item.seller?.isDemoSeed || type === 'product' && item.stock < 1} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-accent px-2.5 py-2 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3">
                         <CartIcon width={14} height={14} /> Add
                       </button>
-                    ) : <button type="button" onClick={() => buyDirectly(item)} disabled={item.seller?.isDemoSeed || item.buyerPriceKobo == null} className="shrink-0 rounded-md bg-ink px-2.5 py-2 text-center text-[11px] font-medium text-paper disabled:opacity-50 sm:px-3">Book</button>}
+                    ) : <button type="button" onClick={() => buyDirectly(item)} disabled={item.seller?.isDemoSeed || item.buyerPriceKobo == null} className="shrink-0 rounded-md bg-accent px-2.5 py-2 text-center text-[11px] font-semibold text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 sm:px-3">Book</button>}
                   </div>
                 </div>
               </article>

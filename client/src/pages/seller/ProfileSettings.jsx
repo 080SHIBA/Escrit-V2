@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { api } from '../../lib/api.js';
 import PhotoField from '../../components/PhotoField.jsx';
+import ShopifyIntegration from '../../components/ShopifyIntegration.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 
 export default function ProfileSettings() {
@@ -85,6 +86,7 @@ export default function ProfileSettings() {
           {saving ? 'Saving…' : 'Save profile'}
         </button>
       </form>
+      <ShopifyIntegration />
     </div>
   );
 }

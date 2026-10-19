@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Joi from 'joi';
+import mongoose from 'mongoose';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -10,6 +11,8 @@ import { ConversationMessage } from '../models/ConversationMessage.js';
 import { Link } from '../models/Link.js';
 import { User } from '../models/User.js';
 import { quoteCollectionFee } from '../services/paymentProvider.js';
+import { sendMessageNotificationEmail } from '../services/mailer.js';
+import { env } from '../config/env.js';
 
 export const serviceOffersRouter = Router();
 serviceOffersRouter.use(requireAuth);
@@ -29,6 +32,35 @@ function emitToOffer(req, offer, event, payload) {
   req.app.get('io')?.to(`offer:${offer.id}`).emit(event, payload);
 }
 
+async function notifyRecipient(req, offer, recipientId, message) {
+  const io = req.app.get('io');
+  io?.to(`user:${recipientId}`).emit('notification:new', { messageId: message.id, offerId: offer.id });
+
+  try {
+    const [recipient, sender, service] = await Promise.all([
+      User.findById(recipientId).select('email'),
+      User.findById(message.senderId).select('businessName'),
+      Service.findById(offer.serviceId).select('title'),
+    ]);
+    if (!recipient?.email) {
+      console.warn(`[notifications] Cannot email message ${message.id}: recipient email is unavailable`);
+      return;
+    }
+    const messageText = message.type === 'offer'
+      ? `A service proposal was ${message.offerEvent?.action || 'updated'}.`
+      : message.body;
+    const conversationUrl = new URL(`/account/offers/${offer.id}`, env.clientUrl).toString();
+    await sendMessageNotificationEmail(recipient.email, {
+      senderName: sender?.businessName || 'An Escrit user',
+      serviceName: service?.title || 'your service conversation',
+      messageText,
+      conversationUrl,
+    });
+  } catch (error) {
+    console.error(`[notifications] Failed to email recipient about message ${message.id}:`, error.message);
+  }
+}
+
 async function saveOfferMessage(req, offer, action, priceKobo, note = '') {
   const actorId = req.sellerId;
   const recipientId = String(actorId) === String(offer.buyerId) ? offer.sellerId : offer.buyerId;
@@ -40,6 +72,7 @@ async function saveOfferMessage(req, offer, action, priceKobo, note = '') {
     offerEvent: { action, priceKobo, note, criteria: offer.fulfilmentCriteria, appointmentAt: offer.appointmentAt },
   });
   emitToOffer(req, offer, 'conversation:message', message.toObject());
+  await notifyRecipient(req, offer, recipientId, message);
   return message;
 }
 
@@ -54,9 +87,31 @@ serviceOffersRouter.get('/', asyncHandler(async (req, res) => {
   const offers = await ServiceOffer.find({ $or: [{ buyerId: req.sellerId }, { sellerId: req.sellerId }] })
     .sort({ updatedAt: -1 })
     .populate('serviceId', 'title images basePrice')
-    .populate('buyerId', 'businessName profilePictureUrl')
-    .populate('sellerId', 'businessName profilePictureUrl');
-  res.json({ offers });
+    .populate('buyerId', 'businessName displayName profilePictureUrl')
+    .populate('sellerId', 'businessName displayName profilePictureUrl');
+  const offerIds = offers.map((offer) => offer._id);
+  const [messageSummaries, unreadSummaries] = offerIds.length
+    ? await Promise.all([
+        ConversationMessage.aggregate([
+          { $match: { offerId: { $in: offerIds } } },
+          { $sort: { createdAt: -1 } },
+          { $group: { _id: '$offerId', latestMessage: { $first: '$$ROOT' } } },
+        ]),
+        ConversationMessage.aggregate([
+          { $match: { offerId: { $in: offerIds }, recipientId: new mongoose.Types.ObjectId(req.sellerId), readAt: null } },
+          { $group: { _id: '$offerId', unreadCount: { $sum: 1 } } },
+        ]),
+      ])
+    : [[], []];
+  const latestByOffer = new Map(messageSummaries.map((entry) => [String(entry._id), entry.latestMessage]));
+  const unreadByOffer = new Map(unreadSummaries.map((entry) => [String(entry._id), entry.unreadCount]));
+  res.json({
+    offers: offers.map((offer) => ({
+      ...offer.toObject(),
+      latestMessage: latestByOffer.get(String(offer._id)) || null,
+      unreadCount: unreadByOffer.get(String(offer._id)) || 0,
+    })),
+  });
 }));
 
 serviceOffersRouter.post('/', validate(createSchema), asyncHandler(async (req, res) => {
@@ -85,6 +140,7 @@ serviceOffersRouter.get('/:id/messages', asyncHandler(async (req, res) => {
     { $set: { deliveredAt: now, readAt: now } }
   );
   const messages = await ConversationMessage.find({ offerId: offer._id }).sort({ createdAt: 1 });
+  req.app.get('io')?.to(`user:${req.sellerId}`).emit('notification:read');
   emitToOffer(req, offer, 'conversation:read', { readerId: req.sellerId, readAt: now });
   res.json({ messages, offer });
 }));
@@ -103,6 +159,7 @@ serviceOffersRouter.post('/:id/messages', validate(messageSchema), asyncHandler(
     deliveredAt: recipientOnline ? new Date() : null,
   });
   emitToOffer(req, offer, 'conversation:message', message.toObject());
+  await notifyRecipient(req, offer, recipientId, message);
   res.status(201).json({ message });
 }));
 

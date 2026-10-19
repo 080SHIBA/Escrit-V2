@@ -38,12 +38,25 @@ const productSchema = new mongoose.Schema(
     price: { type: Number, required: true, min: 0 },
     stock: { type: Number, default: 1, min: 0 },
     condition: { type: String, enum: ['new', 'used', 'refurbished'], default: 'new' },
+    fulfillmentMethod: { type: String, enum: ['delivery', 'pickup', 'delivery-or-pickup', 'digital-download'], default: null },
     negotiable: { type: Boolean, default: false },
     refundable: { type: Boolean, default: false },
     deliveryOptions: { type: [deliveryOptionSchema], default: [{ method: 'pickup', fee: 0 }] },
     scheduledDiscount: { type: scheduledDiscountSchema, default: null },
+    externalSource: { type: String, enum: ['shopify'], default: null },
+    externalShopDomain: { type: String, default: null },
+    externalProductId: { type: String, default: null },
+    externalVariantId: { type: String, default: null },
   },
   { timestamps: true }
+);
+
+productSchema.index(
+  { externalShopDomain: 1, externalVariantId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { externalSource: 'shopify', externalVariantId: { $type: 'string' } },
+  }
 );
 
 export const Product = mongoose.model('Product', productSchema);

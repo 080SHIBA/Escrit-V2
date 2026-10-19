@@ -60,9 +60,17 @@ export default function Register() {
   );
 
   return (
-    <div className="mx-auto grid min-w-0 max-w-6xl grid-cols-1 gap-8 py-4 animate-fade-in-up lg:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.8fr)] lg:items-center">
-      <AccountAside />
-      <section className="certificate min-w-0 p-6 sm:p-8">
+    <div
+      className="relative isolate flex min-h-[calc(100svh-4rem)] w-full items-center justify-center px-4 py-8 animate-fade-in-up sm:px-6"
+      style={{
+        backgroundImage: "linear-gradient(90deg, rgba(5, 16, 20, 0.76), rgba(5, 16, 20, 0.48)), url('/register-market-background.jpg')",
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      }}
+    >
+      <div className="grid w-full min-w-0 max-w-6xl grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.8fr)] lg:items-center">
+        <AccountAside isRegister />
+        <section className="certificate min-w-0 p-6 sm:p-8">
       <h1 className="font-display text-2xl mb-1">{isBuyerFlow ? 'Create your buyer account' : 'Join the Escrit marketplace'}</h1>
       <p className="text-ink/60 mb-6">{isBuyerFlow ? 'Keep your cart, orders, and saved listings together.' : 'Shop or sell across products, courses, and services.'}</p>
 
@@ -96,9 +104,10 @@ export default function Register() {
       </form>
 
       <p className="text-sm text-ink/60 mt-4">
-        Already have an account? <Link to="/login" className="underline">Log in</Link>
+        Already have an account? <Link to="/sign-in" className="underline">Log in</Link>
       </p>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
@@ -153,4 +162,3 @@ function PasswordField({ label, value, onChange, show, onToggleShow, ...rest }) 
     </label>
   );
 }
-

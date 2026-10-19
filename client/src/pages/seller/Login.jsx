@@ -64,9 +64,17 @@ export default function Login() {
   );
 
   return (
-    <div className="mx-auto grid min-w-0 max-w-6xl grid-cols-1 gap-8 py-4 animate-fade-in-up lg:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.8fr)] lg:items-center">
-      <AccountAside isLogin />
-      <section className="certificate min-w-0 p-6 sm:p-8">
+    <div
+      className="relative isolate flex min-h-[calc(100svh-4rem)] w-full items-center justify-center px-4 py-8 animate-fade-in-up sm:px-6"
+      style={{
+        backgroundImage: "linear-gradient(90deg, rgba(5, 16, 20, 0.76), rgba(5, 16, 20, 0.48)), url('/login-market-background.jpg')",
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      }}
+    >
+      <div className="grid w-full min-w-0 max-w-6xl grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.8fr)] lg:items-center">
+        <AccountAside isLogin />
+        <section className="certificate min-w-0 p-6 sm:p-8">
       <h1 className="font-display text-2xl mb-6">Log in</h1>
 
       <GoogleSignInButton onCredential={onGoogleCredential} onError={setError} />
@@ -125,7 +133,8 @@ export default function Login() {
         Shopping?{' '}
         <Link to="/marketplace" className="text-ink/70 underline">Browse the marketplace</Link>. An account keeps your orders and saved items together.
       </p>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,9 @@ The API is in the companion `server` repository.
   proposal chat with a single seller counter-offer.
 - **External payment page** (`/r/:linkId`) — a seller's shareable listing
   page for promotion outside the marketplace.
+- **Escrow recipient onboarding** (`/onboarding`) — after sign-in or sign-up
+  from a shareable link, Escrit restores the server-held return target, shows a
+  recipient-safe preview and sends the buyer back to the same transaction.
 - **Admin console** — review KYC and listings, resolve evidence-backed disputes,
   audit delivery complaints, and manage commission settings.
 
@@ -35,6 +38,18 @@ The dev server proxies `/api` requests to a local instance of the
 `server` repo (see `vite.config.js`), so `VITE_API_URL` can stay empty
 in development.
 
+To preview the orders page without starting the API, set
+`VITE_ORDERS_MOCK=true` in `.env` and open `/account/orders`. The local-only
+preview uses sample buyer/seller orders and simulated actions; it is disabled
+in production builds.
+
+To preview post-sign-up onboarding without the API, set `VITE_AUTH_MOCKS=true`.
+Onboarding uses a local mock by default in development; its saved choices and
+the demo session survive reloads in browser storage. Set
+`VITE_ONBOARDING_MOCK=false` to exercise the authenticated onboarding API.
+Recipient preview mocks include valid, expired, cancelled, already-accepted and
+invalid links; the demo preview IDs are listed in `client/src/lib/onboardingMocks.js`.
+
 ## Environment variables
 
 See `.env.example`. In short:
@@ -43,6 +58,9 @@ See `.env.example`. In short:
 | ------------------------------------------------------------------------------------ |
 | `VITE_API_URL`          | Production only | Full URL of the deployed API (client and server live on different domains). |
 | `VITE_GOOGLE_CLIENT_ID` | No              | Enables the "Continue with Google" button.            |
+| `VITE_AUTH_MOCKS`       | No              | Set to `true` only to preview the auth pages without the API. Real auth is the default. |
+| `VITE_ORDERS_MOCK`      | No              | Set to `true` in development to preview sample orders and actions without API login. |
+| `VITE_ONBOARDING_MOCK`  | No              | Defaults to `true` in development; set to `false` to use `/api/me/onboarding`. |
 
 ## Photo uploads
 

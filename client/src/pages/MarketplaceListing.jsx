@@ -81,7 +81,7 @@ export default function MarketplaceListing() {
             <p className="mt-4 whitespace-pre-line text-sm leading-6 text-ink/70">{item.description || 'The seller has not added a description yet.'}</p>
             {type === 'service' && <ServiceDetails service={item} />}
             {type === 'course' && <CourseDetails course={item} />}
-            {type === 'product' && <div className="mt-5 text-sm text-ink/60"><p>{item.condition} · {item.stock} available{item.negotiable ? ' · Price negotiable' : ''}</p>{item.deliveryOptions?.length > 0 && <p className="mt-2">{item.deliveryOptions.map((option) => `${option.method === 'pickup' ? 'Pickup' : 'Seller delivery'}${option.fee ? ` (₦${Number(option.fee).toLocaleString()})` : ''}`).join(' · ')}</p>}</div>}
+            {type === 'product' && <div className="mt-5 text-sm text-ink/60"><p>{item.condition} · {item.stock} available{item.negotiable ? ' · Price negotiable' : ''}</p>{item.fulfillmentMethod ? <p className="mt-2">{{ delivery: 'Delivery', pickup: 'Pickup', 'delivery-or-pickup': 'Delivery or pickup', 'digital-download': 'Digital download' }[item.fulfillmentMethod]}</p> : item.deliveryOptions?.length > 0 && <p className="mt-2">{item.deliveryOptions.map((option) => `${option.method === 'pickup' ? 'Pickup' : 'Seller delivery'}${option.fee ? ` (₦${Number(option.fee).toLocaleString()})` : ''}`).join(' · ')}</p>}</div>}
           </section>
         </div>
 
@@ -100,7 +100,7 @@ export default function MarketplaceListing() {
           {error && <p role="alert" className="mt-3 text-sm text-dispute">{error}</p>}
           <div className="mt-6 border-t border-line pt-5">
             <p className="text-xs uppercase tracking-wider text-ink/45">Seller</p>
-            <Link to={`/marketplace/seller/${item.seller?._id}`} className="mt-2 block font-medium hover:underline">{item.seller?.businessName || 'Escrit seller'}</Link>
+            <Link to={`/marketplace/seller/${item.seller?._id}`} className="mt-2 block font-medium hover:underline">{item.seller?.displayName || item.seller?.businessName || 'Escrit seller'}</Link>
             {item.seller?.bio && <p className="mt-2 text-sm text-ink/60">{item.seller.bio}</p>}
             <Link to={`/marketplace/seller/${item.seller?._id}`} className="mt-3 inline-block text-sm underline underline-offset-4">View seller storefront</Link>
           </div>
@@ -134,6 +134,9 @@ function CourseDetails({ course }) {
   return (
     <div className="mt-5 space-y-3 text-sm text-ink/65">
       <p>{course.deliveryFormat === 'live' ? 'Live course' : 'Self-paced course'}</p>
+      {course.format && <Detail label="Format" value={{ 'self-paced-videos': 'Self-paced videos', 'live-cohort': 'Live cohort', 'pdf-ebook': 'PDF or ebook' }[course.format]} />}
+      {course.level && <Detail label="Level" value={course.level} />}
+      {course.duration && <Detail label="Duration or lessons" value={course.duration} />}
       {course.curriculum?.length > 0 && (
         <section>
           <h2 className="font-medium text-ink">Curriculum preview</h2>

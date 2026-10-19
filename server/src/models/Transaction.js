@@ -58,6 +58,8 @@ const transactionSchema = new mongoose.Schema(
     buyerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     buyerEmail: { type: String, default: null },
     buyerPhone: { type: String, default: null },
+    termsAcceptedAt: { type: Date, default: null },
+    termsSnapshot: { type: String, default: '' },
 
     fulfillmentStatus: {
       type: String,
@@ -68,6 +70,8 @@ const transactionSchema = new mongoose.Schema(
     fulfillmentNote: { type: String, default: '' },
     deliveryProofUrl: { type: String, default: '' },
     fulfillmentUpdatedAt: { type: Date, default: null },
+    deliveredAt: { type: Date, default: null },
+    releaseDueAt: { type: Date, default: null, index: true },
     buyerNoShowAt: { type: Date, default: null },
     noShowResponseDueAt: { type: Date, default: null },
     buyerNoShowReason: { type: String, default: null },

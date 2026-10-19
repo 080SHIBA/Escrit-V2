@@ -96,7 +96,7 @@ export default function BuyerLists({ mode }) {
                   <div className="min-w-0 flex-1">
                     <p className="text-xs uppercase text-ink/45">{entry.listingType}</p>
                     <h2 className="mt-1 truncate font-medium">{listing.title}</h2>
-                    <p className="mt-1 text-sm text-ink/55">{listing.seller?.businessName || 'Escrit seller'}</p>
+                    <Link to={`/marketplace/seller/${listing.seller?._id}`} className="mt-1 inline-block text-sm text-ink/55 hover:text-accent hover:underline">{listing.seller?.displayName || listing.seller?.businessName || 'Escrit seller'}</Link>
                     <p className="mt-2 font-semibold">₦{(Number(price || 0) * (isCart ? entry.quantity : 1)).toLocaleString()}</p>
                     {isCart && entry.listingType === 'product' && listing.refundable && <p className="mt-1 max-w-xl text-xs leading-5 text-ink/55">Missed pickup refund: 95% of the amount paid is returned; 5% is retained. This applies if the seller records a no-show.</p>}
                     {isCart && entry.listingType === 'course' && listing.refundable && <p className="mt-1 max-w-xl text-xs leading-5 text-ink/55">Refund conditions: {listing.refundConditions || 'See the course listing.'}</p>}

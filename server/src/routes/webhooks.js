@@ -6,6 +6,7 @@ import { Transaction } from '../models/Transaction.js';
 import { reconcileWithPaymentProvider } from '../services/escrow.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getFlutterwaveCredentials, getPaystackCredentials } from '../services/paymentMode.js';
+import { recordFunnelEvent } from '../services/funnel.js';
 
 export const webhooksRouter = Router();
 
@@ -17,7 +18,14 @@ async function reconcileEvent(provider, event) {
   if (tx && tx.status === 'CREATED') {
     tx.paymentProviderTransactionId = provider === 'flutterwave' ? String(providerId) : String(reference);
     await tx.save();
-    await reconcileWithPaymentProvider(tx);
+    const reconciled = await reconcileWithPaymentProvider(tx);
+    if (reconciled.status !== 'CREATED') {
+      recordFunnelEvent('payment_completed', {
+        userId: reconciled.buyerUserId,
+        linkId: String(reconciled.linkId),
+        transactionId: String(reconciled._id),
+      }).catch((error) => console.error('[funnel] could not record payment_completed', error.message));
+    }
   }
 }
 

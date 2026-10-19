@@ -1,0 +1,26 @@
+[
+  {
+    "date": "2026-10-13",
+    "macrostructure": "Narrative Workflow",
+    "theme": "Midnight",
+    "enrichment": "none",
+    "brief": "Unified seller and buyer order tracking with escrow actions",
+    "scope": "app"
+  },
+  {
+    "date": "2026-10-13",
+    "macrostructure": "Workbench",
+    "theme": "Midnight",
+    "enrichment": "none",
+    "brief": "Seller dashboard redesign with real account, sales and message data",
+    "scope": "app"
+  },
+  {
+    "date": "2026-10-10",
+    "macrostructure": "Ecosystem Index + Workbench",
+    "theme": "Midnight",
+    "enrichment": "none",
+    "brief": "Escrit marketplace UI/UX redesign for traders and customers",
+    "scope": "app"
+  }
+]

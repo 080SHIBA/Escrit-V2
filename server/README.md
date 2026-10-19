@@ -20,13 +20,21 @@ The web client is in the companion `client` repository.
 4. Provider webhooks are authenticated with the configured secret. The API
    verifies the provider transaction ID, status, currency, and total
    before moving every order to **held**.
-5. Sellers update shipment tracking or service completion. Buyers confirm
-   completion or raise a dispute; there is no timer starting at payment.
-   Admin dispute resolutions record a written reason.
+5. Sellers mark delivery or service completion. Buyers can confirm early,
+   raise a dispute to freeze the funds, or let the 72-hour confirmation
+   window expire for automatic payout. Admin dispute resolutions record a
+   written reason.
 
 Payouts and refunds use the selected provider. Seller payouts use the saved verified
 bank details, minus the configurable platform commission. Buyer-facing listing
 prices include the provider-quoted processing fee, which is not itemized at checkout.
+
+Recipient onboarding uses the validated `returnTo` path submitted during
+registration or sign-in and stores its link and transaction IDs on the user.
+`GET /api/escrow-links/:id/preview` returns only recipient-safe transaction
+details and a server-derived link state. Checkout requires explicit acceptance
+of the stored terms snapshot; onboarding itself never accepts terms or starts
+payment.
 
 ## Live vs. test payments
 
@@ -76,7 +84,9 @@ Deploy the `server` directory as a Render web service with build command
 `npm ci`, start command `npm start`, and health check path `/api/health`. Set
 `CLIENT_ORIGIN` to the exact Vercel origin(s), including any deliberate preview
 origin. Configure `PAYSTACK_SECRET_KEY`, `PAYSTACK_WEBHOOK_SECRET`, MongoDB, JWT secrets,
-`OWNER_EMAILS`, and the optional Cloudinary, Google, and Brevo variables in Render.
+`OWNER_EMAILS`, plus Brevo sender/API credentials to send new-account verification
+links. Set `GOOGLE_CLIENT_ID` on the API and `VITE_GOOGLE_CLIENT_ID` on the client
+to enable Google sign-in. Configure the optional Cloudinary variables in Render.
 
 Deploy the `client` directory to Vercel with `npm run build` and output directory
 `dist`. Set `VITE_API_URL` to the public Render URL with no trailing slash and
@@ -92,6 +102,41 @@ the short-lived access token. Configure `CLIENT_ORIGIN` for every deployed clien
 origin; service offer messages are persisted in MongoDB and sockets deliver live
 updates, presence, typing, and read state.
 
+## Shopify seller channel
+
+Sellers can connect their own Shopify store from Profile settings. The integration
+uses Shopify OAuth and requests only `read_products` and `read_orders`. Configure
+the following server-only environment variables:
+
+- `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` from the Shopify Dev Dashboard.
+- `SHOPIFY_REDIRECT_URI`, exactly `https://<your-api-host>/api/shopify/callback`;
+  add this same value to the app's allowed redirect URLs.
+- `SHOPIFY_TOKEN_ENCRYPTION_KEY`, a private 32-byte key encoded as 64 hex
+  characters. Generate one with
+  `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`
+  and store it only in the server's secret environment.
+- `SHOPIFY_API_VERSION`, optional; defaults to `2026-10`.
+
+The app must request `read_products` and `read_orders` in its API access
+configuration. Shopify must be able to reach the HTTPS callback URL. Sellers
+enter their `<store>.myshopify.com` domain and approve the requested scopes on
+Shopify before the connection is saved. OAuth state is single-use and expires
+after ten minutes; callbacks have their HMAC and timestamp verified. Access and
+refresh tokens are AES-256-GCM encrypted in MongoDB. If the encryption key is
+lost or changed, connected stores must be disconnected and authorized again.
+
+Product import is paginated and idempotent. Each Shopify variant becomes an
+inactive, unverified Escrit product draft. Sellers review the imported title,
+description, category, image, Escrit price, and stock, then submit each draft
+through Escrit's normal listing moderation. Importing does not publish products
+or make Shopify product changes. Recent Shopify orders are a separate, read-only
+view; they are not Escrit `Transaction` records, checkout sessions, payments, or
+escrow orders. No Shopify order is created from an Escrit purchase.
+
+To disconnect, sellers can remove the locally stored encrypted tokens in Profile
+settings and revoke Escrit's access from Shopify's app settings. Existing drafts
+and submitted Escrit listings are preserved.
+
 ## Admin review
 
 Admins review KYC, approve listings, resolve disputes, and inspect post-delivery
@@ -100,6 +145,8 @@ roles and update the platform commission percentage.
 
 ## Fulfillment
 
-Payment does not start an auto-release countdown. Sellers record shipment
-and tracking updates or service meeting/completion status. Buyers confirm
-delivery/completion or open a dispute before escrow payout.
+The 72-hour auto-release countdown starts when the seller marks delivery or
+service completion, not when payment is made. A buyer confirmation releases
+funds sooner; a dispute freezes the transaction until an admin resolution.
+The server checks due orders once per minute and retries failed payouts while
+the escrow remains held.

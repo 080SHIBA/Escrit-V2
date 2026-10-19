@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import { getAccessToken, getRealtimeUrl, api } from '../../lib/api.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
+import { HandshakeIcon } from '../../components/icons.jsx';
 
 export default function ServiceOffers() {
   const { offerId } = useParams();
@@ -115,7 +116,7 @@ export default function ServiceOffers() {
       <div className="mx-auto max-w-5xl">
         <header className="border-b border-line pb-5">
           <p className="text-xs uppercase tracking-wider text-ink/50">Account</p>
-          <h1 className="mt-2 font-display text-3xl">Service offers and chats</h1>
+          <h1 className="mt-2 flex items-center gap-3 font-display text-3xl"><HandshakeIcon width={28} height={28} />Service offers and chats</h1>
         </header>
         {error && <p role="alert" className="mt-5 text-sm text-dispute">{error}</p>}
         {offers?.length === 0 && <p className="mt-6 border-y border-line py-8 text-sm text-ink/55">No service proposals yet. Start one from a service listing.</p>}
@@ -125,7 +126,8 @@ export default function ServiceOffers() {
             const otherParty = String(entry.buyerId?._id) === myId ? entry.sellerId : entry.buyerId;
             return <li key={entry._id}>
               <Link to={`/account/offers/${entry._id}`} className="flex flex-wrap items-center justify-between gap-3 py-4 hover:text-ink">
-                <div><p className="font-medium">{entry.serviceId?.title || 'Service deal'}</p><p className="mt-1 text-sm text-ink/55">{otherParty?.businessName} · {entry.status.toLowerCase()}</p></div>
+                <HandshakeIcon width={22} height={22} className="mr-1" />
+                <div><p className="font-medium">{entry.serviceId?.title || 'Service deal'}</p><p className="mt-1 text-sm text-ink/55"><Link to={`/marketplace/seller/${otherParty?._id}`} className="hover:text-accent hover:underline">{otherParty?.displayName || otherParty?.businessName}</Link> · {entry.status.toLowerCase()}</p></div>
                 <span className="font-mono text-sm">₦{(entry.currentPriceKobo / 100).toLocaleString()}</span>
               </Link>
             </li>;
@@ -141,7 +143,7 @@ export default function ServiceOffers() {
     <div className="mx-auto max-w-4xl">
       <Link to="/account/offers" className="text-sm text-ink/55 underline underline-offset-4">All offers</Link>
       <header className="mt-4 flex flex-wrap items-start justify-between gap-3 border-y border-line py-5">
-        <div><p className="text-xs uppercase tracking-wider text-ink/50">Service proposal · {offer.status.toLowerCase()}</p><h1 className="mt-1 font-display text-2xl">Agreed scope and conversation</h1><p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-6 text-ink/65">{offer.fulfilmentCriteria}</p>{offer.appointmentAt && <p className="mt-2 text-xs text-ink/55">Preferred appointment: {new Date(offer.appointmentAt).toLocaleString()}</p>}</div>
+        <div><p className="flex items-center gap-2 text-xs uppercase tracking-wider text-ink/50"><HandshakeIcon width={16} height={16} />Service proposal · {offer.status.toLowerCase()}</p><h1 className="mt-1 font-display text-2xl">Agreed scope and conversation</h1><p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-6 text-ink/65">{offer.fulfilmentCriteria}</p>{offer.appointmentAt && <p className="mt-2 text-xs text-ink/55">Preferred appointment: {new Date(offer.appointmentAt).toLocaleString()}</p>}</div>
         <div className="text-right"><p className="text-xs text-ink/50">Current offer</p><p className="font-mono text-xl font-semibold">₦{(offer.currentPriceKobo / 100).toLocaleString()}</p></div>
       </header>
 

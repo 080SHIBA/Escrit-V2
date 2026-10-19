@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { connectDB } from './config/db.js';
 import { env } from './config/env.js';
 import { startNoShowSettlementJob } from './services/noShowSettlement.js';
+import { startDeliveryReleaseJob } from './services/deliveryRelease.js';
 import { configureSocketServer } from './services/socketServer.js';
 
 // Routes are wrapped in asyncHandler, but the cron job runs outside a
@@ -28,6 +29,7 @@ async function main() {
   });
 
   startNoShowSettlementJob();
+  startDeliveryReleaseJob();
 
 }
 

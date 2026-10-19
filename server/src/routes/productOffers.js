@@ -15,8 +15,8 @@ productOffersRouter.get('/', asyncHandler(async (req, res) => {
   const offers = await ProductOffer.find({ $or: [{ buyerId: req.sellerId }, { sellerId: req.sellerId }] })
     .sort({ updatedAt: -1 })
     .populate('productId', 'title images price')
-    .populate('buyerId', 'businessName profilePictureUrl')
-    .populate('sellerId', 'businessName profilePictureUrl');
+    .populate('buyerId', 'businessName displayName profilePictureUrl')
+    .populate('sellerId', 'businessName displayName profilePictureUrl');
   res.json({ offers });
 }));
 

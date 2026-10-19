@@ -63,13 +63,13 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
         </div>
       </div>
 
-      <div className={`group/carousel relative isolate overflow-hidden rounded-lg bg-forest-900 text-white shadow-card-lg ${compact ? 'min-h-[18rem] sm:min-h-[20rem] lg:min-h-[21rem]' : 'min-h-[19rem] sm:min-h-[24rem] lg:min-h-[27rem]'}`}>
+      <div className={`group/carousel featured-card relative isolate overflow-hidden rounded-xl border border-line bg-forest-900 text-white shadow-card-lg ${compact ? 'min-h-[18rem] sm:min-h-[20rem] lg:min-h-[21rem]' : 'min-h-[19rem] sm:min-h-[24rem] lg:min-h-[27rem]'}`}>
         <Link key={activeItem?._id || `category-${type}`} to={destination} className="absolute inset-0 block animate-fade-in" aria-label={hasListings ? `View ${activeItem.title}` : `Explore ${type}`}>
           <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover/carousel:scale-[1.025]" />
           <span className="absolute inset-0 bg-gradient-to-r from-forest-950/90 via-forest-950/65 to-forest-950/10" />
           <span className="absolute inset-0 bg-gradient-to-t from-forest-950/70 via-transparent to-forest-950/10" />
           <div className={`relative flex max-w-3xl flex-col justify-end p-5 sm:p-9 lg:p-12 ${compact ? 'min-h-[18rem] sm:min-h-[20rem] lg:min-h-[21rem]' : 'min-h-[19rem] sm:min-h-[24rem] lg:min-h-[27rem]'}`}>
-            <span className="mb-auto inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur-sm">
+            <span className="mb-auto inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-forest-950/90 px-3 py-1.5 text-xs font-medium text-white/90">
               <LockIcon width={13} height={13} /> {hasListings ? activeItem.category || type : 'Marketplace · escrow protected'}
             </span>
             <div className="max-w-2xl">

@@ -110,9 +110,22 @@ export default function AdminQueue({ mode }) {
 }
 
 function KycRow({ user, note, onNote, onReview, busy }) {
+  const documents = [
+    ['ID front', user.idFrontUrl],
+    ['ID back', user.idBackUrl],
+    ['Selfie', user.selfieUrl],
+    ['Legacy ID document', user.idDocumentUrl],
+  ].filter(([, url]) => url);
   return <section className="grid gap-4 md:grid-cols-[1fr_18rem]">
-    <div><p className="font-medium">{user.fullName || user.businessName}</p><p className="mt-1 text-sm text-ink/60">{user.email} · {user.businessName}</p><p className="mt-2 text-sm">ID: <span className="font-mono">{user.nin || 'Not provided'}</span></p>{user.idDocumentUrl && <a href={user.idDocumentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm underline underline-offset-4">Open ID document</a>}</div>
-    <div className="space-y-2"><label className="block text-xs text-ink/55">Review note<textarea value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} rows={2} className="mt-1 w-full border border-line bg-input px-2 py-1.5 text-sm" /></label><div className="flex gap-2"><button disabled={busy} onClick={() => onReview(true)} className="flex-1 rounded-md bg-released px-3 py-2 text-xs font-medium text-paper disabled:opacity-50">Verify</button><button disabled={busy} onClick={() => onReview(false)} className="flex-1 rounded-md border border-dispute/40 px-3 py-2 text-xs font-medium text-dispute disabled:opacity-50">Reject</button></div></div>
+    <div>
+      <p className="font-medium">{user.fullName || user.businessName}</p>
+      <p className="mt-1 text-sm text-ink/60">{user.email} · {user.businessName}</p>
+      {user.dob && <p className="mt-2 text-sm">Date of birth: {new Date(user.dob).toLocaleDateString()}</p>}
+      {user.idType && <p className="mt-1 text-sm">ID type: {user.idType}</p>}
+      <p className="mt-1 text-sm">ID: <span className="font-mono">{user.idNumber || user.nin || 'Not provided'}</span></p>
+      {documents.length > 0 && <ul className="mt-3 flex flex-wrap gap-3">{documents.map(([label, url]) => <li key={label}><a href={url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{label}</a></li>)}</ul>}
+    </div>
+    <div className="space-y-2"><label className="block text-xs text-ink/55">Review note<textarea aria-label="Review note" value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} rows={2} className="mt-1 w-full border border-line bg-input px-2 py-1.5 text-sm" /></label><div className="flex gap-2"><button disabled={busy} onClick={() => onReview(true)} className="min-h-11 flex-1 rounded-md bg-released px-3 py-2 text-xs font-medium text-paper disabled:opacity-50">Verify</button><button disabled={busy} onClick={() => onReview(false)} className="min-h-11 flex-1 rounded-md border border-dispute/40 px-3 py-2 text-xs font-medium text-dispute disabled:opacity-50">Reject</button></div></div>
   </section>;
 }
 

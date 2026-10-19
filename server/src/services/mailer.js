@@ -1,13 +1,28 @@
-// Sends the two transactional emails (email OTP, password reset) through
+// Sends transactional authentication emails (verification, OTP, password reset) through
 // Brevo's HTTPS API. HTTPS is used instead of SMTP because Render's free
 // tier blocks SMTP ports.
 //
-// Without Brevo configured, the email is logged to the console instead,
-// so both flows still work in local development.
+// Legacy OTP/reset flows can fall back to logs locally; new-account
+// verification requires a real delivery so the UI never claims a false send.
 import { env } from "../config/env.js";
 
-async function send({ to, subject, html, devFallbackLabel, devFallbackValue }) {
-  if (!env.brevo.apiKey || !env.brevo.fromAddress) {
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
+}
+
+export function isEmailDeliveryConfigured() {
+  return Boolean(env.brevo.apiKey && env.brevo.fromAddress);
+}
+
+async function send({ to, subject, html, devFallbackLabel, devFallbackValue, requireDelivery = false }) {
+  if (!isEmailDeliveryConfigured()) {
+    if (requireDelivery) throw new Error('Email delivery is not configured');
     console.warn(
       `[mailer] Brevo not configured (BREVO_API_KEY/BREVO_FROM_ADDRESS missing) — not sending "${subject}" to ${to}.\n` +
         `[mailer] ${devFallbackLabel}: ${devFallbackValue}`,
@@ -35,13 +50,27 @@ async function send({ to, subject, html, devFallbackLabel, devFallbackValue }) {
       throw new Error(body.message || `Brevo responded ${res.status}`);
     }
   } catch (err) {
-    // A failed send must not fail the request; log it and print the value instead.
+    // Verification sends fail explicitly; legacy email flows keep their local fallback.
     console.error(
       `[mailer] Brevo send failed for "${subject}" to ${to}:`,
       err.message,
     );
+    if (requireDelivery) throw new Error('Email delivery failed');
     console.warn(`[mailer] ${devFallbackLabel}: ${devFallbackValue}`);
   }
+}
+
+export async function sendVerificationEmail(to, verificationUrl) {
+  await send({
+    to,
+    subject: 'Verify your email — Escrit',
+    html: `
+      <p>Welcome to Escrit. Confirm your email address to finish setting up your account.</p>
+      <p><a href="${verificationUrl}">Verify my email</a></p>
+      <p>This link expires in 24 hours. If you didn't create an Escrit account, you can ignore this email.</p>
+    `,
+    requireDelivery: true,
+  });
 }
 
 export async function sendOtpEmail(to, code) {
@@ -69,5 +98,22 @@ export async function sendPasswordResetEmail(to, resetUrl) {
     `,
     devFallbackLabel: "Reset URL",
     devFallbackValue: resetUrl,
+  });
+}
+
+export async function sendMessageNotificationEmail(to, { senderName, serviceName, messageText, conversationUrl }) {
+  await send({
+    to,
+    subject: `New message from ${senderName} — Escrit`,
+    html: `
+      <p>You have a new message from <strong>${escapeHtml(senderName)}</strong> about <strong>${escapeHtml(serviceName)}</strong>.</p>
+      <blockquote style="margin:16px 0;padding:12px 16px;border-left:3px solid #0092A0;background:#f4f7f8">
+        ${escapeHtml(messageText)}
+      </blockquote>
+      <p><a href="${escapeHtml(conversationUrl)}">Open your conversation</a></p>
+      <p>You received this email because someone sent you a message on Escrit.</p>
+    `,
+    devFallbackLabel: 'Message notification',
+    devFallbackValue: 'New message (message content omitted)',
   });
 }

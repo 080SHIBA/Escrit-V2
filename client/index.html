@@ -8,8 +8,8 @@
       name="description"
       content="Shop products, discover courses, and book services from independent sellers. Eligible payments are protected by escrow until fulfillment is confirmed."
     />
-    <meta name="theme-color" content="#F6F9F5" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0F1713" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F5F6FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111522" media="(prefers-color-scheme: dark)" />
     <meta name="robots" content="index, follow" />
     <!-- NOTE: replace with the real production domain once deployed —
          also update client/public/sitemap.xml and robots.txt to match. -->
@@ -39,7 +39,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@700&family=Tomorrow:wght@500;600;700&display=swap" rel="stylesheet" />
 
     <!-- Google Identity Services — powers the "Continue with Google"
          button (see components/GoogleSignInButton.jsx). Loaded here
@@ -54,7 +54,7 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem('escrit_theme') || 'system';
+          var stored = localStorage.getItem('escrit_theme') || 'dark';
           var resolved = stored === 'system'
             ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
             : stored;

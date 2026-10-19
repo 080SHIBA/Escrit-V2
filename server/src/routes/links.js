@@ -13,6 +13,7 @@ import { createUploadSignature } from '../services/cloudinary.js';
 import { quoteCollectionFee } from '../services/paymentProvider.js';
 import { refundProductNoShow, resolveNonRefundableProductNoShow } from '../services/escrow.js';
 import { env } from '../config/env.js';
+import { deliveryReleaseTime } from '../../../shared/orderState.js';
 
 export const linksRouter = Router();
 linksRouter.use(requireAuth);
@@ -20,6 +21,7 @@ linksRouter.use(requireAuth);
 const createLinkSchema = Joi.object({
   itemName: Joi.string().min(2).max(120).required(),
   itemDescription: Joi.string().max(1000).allow('').default(''),
+  termsSnapshot: Joi.string().trim().max(1500).allow('').default(''),
   // https only: browsers block http images on an https page.
   itemPhotoUrl: Joi.string().uri({ scheme: ['https'] }).max(500).allow(null).default(null),
   priceNaira: Joi.number().min(100).required(), // collected in naira, stored in kobo
@@ -34,16 +36,21 @@ linksRouter.post('/upload-signature', uploadLimiter, asyncHandler(async (_req, r
 // starts checkout, so a link can sit with zero orders indefinitely.
 linksRouter.post('/', validate(createLinkSchema), asyncHandler(async (req, res) => {
   const seller = await User.findById(req.sellerId);
+  if (seller?.kycStatus !== 'verified') {
+    throw new AppError(422, 'Verify your identity before creating a payment link');
+  }
   if (!seller?.bankAccount) {
     // Checked here as well as in the UI: no link goes live without a payout destination.
     throw new AppError(422, 'Add a verified bank account before creating a payment link');
   }
 
-  const { itemName, itemDescription, itemPhotoUrl, priceNaira } = req.body;
+  const { itemName, itemDescription, termsSnapshot, itemPhotoUrl, priceNaira } = req.body;
+  const storedTermsSnapshot = termsSnapshot || itemDescription || 'The seller will confirm delivery details with you before checkout.';
   const link = await Link.create({
     sellerId: seller.id,
     itemName,
     itemDescription,
+    termsSnapshot: storedTermsSnapshot,
     itemPhotoUrl,
     priceKobo: Math.round(priceNaira * 100),
     checkoutPriceKobo: Math.round(priceNaira * 100) + await quoteCollectionFee(Math.round(priceNaira * 100)),
@@ -121,6 +128,12 @@ linksRouter.patch('/:id/transactions/:txId/fulfillment', validate(fulfillmentSch
     return res.json({ transaction: completed });
   }
   if (tx.status !== TX_STATUS.PAID_HELD) throw new AppError(409, 'Fulfillment can only be updated while payment is held');
+  if (
+    ['DELIVERED', 'SERVICE_COMPLETE'].includes(tx.fulfillmentStatus) &&
+    req.body.status !== tx.fulfillmentStatus
+  ) {
+    throw new AppError(409, 'Delivered orders cannot return to an earlier fulfillment status');
+  }
 
   const serviceStatuses = ['READY_FOR_MEETING', 'SERVICE_COMPLETE', 'BUYER_NO_SHOW'];
   const productStatuses = ['IN_TRANSIT', 'DELIVERED', 'BUYER_NO_SHOW'];
@@ -141,6 +154,10 @@ linksRouter.patch('/:id/transactions/:txId/fulfillment', validate(fulfillmentSch
   tx.fulfillmentNote = req.body.note;
   tx.deliveryProofUrl = req.body.proofUrl;
   tx.fulfillmentUpdatedAt = new Date();
+  if (['DELIVERED', 'SERVICE_COMPLETE'].includes(req.body.status) && !tx.deliveredAt) {
+    tx.deliveredAt = tx.fulfillmentUpdatedAt;
+    tx.releaseDueAt = deliveryReleaseTime(tx.fulfillmentUpdatedAt);
+  }
   if (req.body.status === 'BUYER_NO_SHOW') {
     tx.buyerNoShowAt = new Date();
     if (link.fulfillmentType === 'service') {
