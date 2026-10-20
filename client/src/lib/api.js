@@ -21,7 +21,9 @@ export function getAccessToken() {
 }
 
 export function getRealtimeUrl() {
-  return import.meta.env.DEV ? window.location.origin : import.meta.env.VITE_API_URL || window.location.origin;
+  return import.meta.env.DEV
+    ? window.location.origin
+    : import.meta.env.VITE_REALTIME_URL || import.meta.env.VITE_API_URL || window.location.origin;
 }
 
 // Empty in development (Vite proxies /api to the local server). In
