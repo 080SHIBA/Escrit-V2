@@ -44,6 +44,7 @@ export default function GoogleSignInButton({ onCredential, onError, disabled = f
         try {
           window.google.accounts.id.initialize({
             client_id: clientId,
+            use_fedcm_for_button: true, 
             callback: (response) => {
               const handlers = activeButtonHandlers?.current;
               if (response?.credential) handlers?.onCredential(response.credential);
