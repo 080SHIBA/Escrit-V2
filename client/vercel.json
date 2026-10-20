@@ -1,6 +1,6 @@
 {
   "rewrites": [
-  { "source": "/api/(.*)", "destination": "https://YOUR-SERVICE.onrender.com/api/$1" },
+  { "source": "/api/(.*)", "destination": "https://escrit-v2.onrender.com/api/$1" },
   { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
