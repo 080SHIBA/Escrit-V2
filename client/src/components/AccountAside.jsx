@@ -12,7 +12,7 @@ const BENEFITS = [
   },
   {
     title: 'Escrow is built into eligible checkout',
-    body: 'Your payment is held while the seller fulfils the order. Confirm delivery or raise a dispute before release.',
+    body: 'For escrow purchases, payment is held while the seller fulfils the order. Confirm delivery or raise a dispute before release.',
   },
 ];
 

@@ -11,12 +11,13 @@ import { LockIcon, ShieldCheckIcon, ClockIcon } from '../../components/icons.jsx
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import GoogleSignInButton from '../../components/GoogleSignInButton.jsx';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../../shared/releaseConditions.js';
 
 const TOUR_STEPS = [
   {
     selector: '[data-tour="trust-strip"]',
-    title: 'Your money is held, not sent to the seller',
-    body: 'Escrit sits between you and the seller. Paying does not hand them your money yet.',
+    title: 'Choose escrow when it is offered',
+    body: 'Escrow orders hold payment; direct payments are sent to the seller and cannot be held or recovered by Escrit.',
   },
   {
     selector: '[data-tour="verified-name"]',
@@ -26,7 +27,7 @@ const TOUR_STEPS = [
   {
     selector: '[data-tour="pay-action"]',
     title: 'What happens after you pay',
-    body: 'The seller marks delivery or service completion. You confirm the outcome or raise a dispute before funds are released.',
+    body: 'Review the seller’s release condition before paying. You can confirm early or raise a dispute to keep your money on hold.',
   },
 ];
 
@@ -59,7 +60,9 @@ export default function PublicLinkPage() {
   const [googleCreated, setGoogleCreated] = useState(false);
   const [noShowReason, setNoShowReason] = useState('');
   const [disputing, setDisputing] = useState(false);
+  const [reportingProblem, setReportingProblem] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [checkoutMode, setCheckoutMode] = useState('escrow');
   const pollRef = useRef(null);
   const previewTrackedRef = useRef(false);
 
@@ -80,6 +83,9 @@ export default function PublicLinkPage() {
         .then((d) => {
           if (cancelled) return;
           setData(d);
+          if (d.link.paymentOptions && !d.link.paymentOptions.escrow && d.link.paymentOptions.direct) {
+            setCheckoutMode('direct');
+          }
           if (!previewTrackedRef.current) {
             previewTrackedRef.current = true;
             api.trackFunnelEvent('link_preview_viewed', linkId, txId || '')
@@ -99,7 +105,7 @@ export default function PublicLinkPage() {
   async function pay(e) {
     e.preventDefault();
     if (!termsAccepted) {
-      setActionError('Review and accept the transaction terms before continuing.');
+      setActionError('Review and accept the transaction terms and release condition before continuing.');
       return;
     }
     if (authStatus !== 'authed') {
@@ -112,7 +118,7 @@ export default function PublicLinkPage() {
     setActionError(null);
     setPaying(true);
     try {
-      const { authorizationUrl, transactionId } = await api.checkout(linkId, { termsAccepted });
+      const { authorizationUrl, transactionId } = await api.checkout(linkId, { termsAccepted, checkoutMode: selectedCheckoutMode });
       localStorage.setItem(lastOrderKey(linkId), transactionId);
       window.location.href = authorizationUrl; // selected provider's hosted checkout
     } catch (err) {
@@ -172,6 +178,24 @@ export default function PublicLinkPage() {
     }
   }
 
+  async function reportDirectProblem(e) {
+    e.preventDefault();
+    if (disputeReason.trim().length < 5) {
+      setActionError('Please describe the problem in at least 5 characters.');
+      return;
+    }
+    setActionError(null);
+    setReportingProblem(true);
+    try {
+      const { transaction } = await api.reportDirectProblem(linkId, txId, { reason: disputeReason.trim() });
+      setData((d) => ({ ...d, transaction }));
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setReportingProblem(false);
+    }
+  }
+
   async function addMoreEvidence(event) {
     event.preventDefault();
     setActionError(null);
@@ -215,7 +239,17 @@ export default function PublicLinkPage() {
   const { link, seller, transaction } = data;
   const status = transaction?.status; // undefined until checkout starts
   const termsSnapshot = transaction?.termsSnapshot || link.termsSnapshot || link.itemDescription || '';
-  const escrowCheckout = link.fulfillmentType !== 'service';
+  const paymentOptions = link.paymentOptions || (link.fulfillmentType === 'service'
+    ? { escrow: false, direct: true }
+    : { escrow: true, direct: false });
+  const selectedCheckoutMode = transaction?.checkoutMode
+    || (checkoutMode === 'direct' && !paymentOptions.direct
+      ? 'escrow'
+      : checkoutMode === 'escrow' && !paymentOptions.escrow
+        ? 'direct'
+        : checkoutMode);
+  const escrowCheckout = selectedCheckoutMode === 'escrow';
+  const releaseWindowHours = transaction?.releaseWindowHours ?? link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS;
 
   return (
     <div className="animate-fade-in-up">
@@ -230,7 +264,7 @@ export default function PublicLinkPage() {
           <ShieldCheckIcon width={14} height={14} /> Seller details available
         </span>
         <span className="flex items-center gap-1.5">
-          <ClockIcon width={14} height={14} /> {escrowCheckout ? 'Funds release after delivery confirmation' : 'Payment is sent after the charge is confirmed'}
+          <ClockIcon width={14} height={14} /> {escrowCheckout ? 'Funds release after confirmation or the review period' : 'Payment is sent after the charge is confirmed'}
         </span>
       </div>
 
@@ -255,6 +289,17 @@ export default function PublicLinkPage() {
             <h2 className="text-sm font-semibold">Transaction terms</h2>
             <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{termsSnapshot}</p>
           </div>
+        )}
+        {escrowCheckout && (
+          <div className="my-4 rounded-lg border border-accent/30 bg-accent/5 p-4">
+            <h2 className="text-sm font-semibold">When your money is released</h2>
+            <p className="mt-1 text-sm leading-6 text-ink/70">{releaseRuleText(releaseWindowHours, link.fulfillmentType)}</p>
+          </div>
+        )}
+        {!escrowCheckout && paymentOptions.direct && (
+          <p className="my-4 rounded-lg border border-line bg-paper-2 p-4 text-sm leading-6 text-ink/70">
+            Without escrow, Escrit cannot hold or recover this money, but you can still report problems.
+          </p>
         )}
         {link.fulfillmentType === 'product' && link.refundable && (
           <p className="mb-4 text-xs text-ink/55">Refundable pickup: if the seller records a no-show, 95% of the item price is automatically refunded and a disclosed 5% no-show fee is retained.</p>
@@ -283,6 +328,24 @@ export default function PublicLinkPage() {
         {!status && link.active && link.checkoutPriceKobo != null && (
           authStatus === 'authed' ? (
             <form onSubmit={pay} className="space-y-3">
+              {paymentOptions.escrow && paymentOptions.direct && (
+                <fieldset>
+                  <legend className="text-sm font-semibold">Choose a payment option</legend>
+                  <div role="radiogroup" aria-label="Payment option" className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line p-3 text-sm focus-within:outline focus-within:outline-2 focus-within:outline-focus">
+                      <input type="radio" name="checkout-mode" value="escrow" checked={selectedCheckoutMode === 'escrow'} onChange={() => setCheckoutMode('escrow')} className="h-5 w-5 accent-ink" />
+                      <span>Pay with escrow</span>
+                    </label>
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line p-3 text-sm focus-within:outline focus-within:outline-2 focus-within:outline-focus">
+                      <input type="radio" name="checkout-mode" value="direct" checked={selectedCheckoutMode === 'direct'} onChange={() => setCheckoutMode('direct')} className="h-5 w-5 accent-ink" />
+                      <span>Pay without escrow</span>
+                    </label>
+                  </div>
+                </fieldset>
+              )}
+              {!escrowCheckout && paymentOptions.direct && (
+                <p className="text-xs leading-5 text-ink/60">Escrit cannot hold or recover direct payments. You can still report problems.</p>
+              )}
               <label className="flex min-h-11 items-start gap-3 text-sm text-ink/75">
                 <input
                   type="checkbox"
@@ -290,12 +353,12 @@ export default function PublicLinkPage() {
                   checked={termsAccepted}
                   onChange={(event) => setTermsAccepted(event.target.checked)}
                 />
-                <span>I have reviewed and agree to the transaction terms shown above.</span>
+                <span>I have reviewed and agree to the transaction terms and selected payment option shown above.</span>
               </label>
               <button disabled={paying || seller.demoOnly || !termsAccepted} className="w-full bg-ink text-paper py-3 font-medium disabled:opacity-50 hover:bg-ink/90 transition-colors rounded-lg">
-                {paying ? 'Redirecting to secure checkout…' : link.fulfillmentType === 'product' || link.fulfillmentType === 'course' ? 'Buy with escrow' : 'Book and pay directly'}
+                {paying ? 'Redirecting to checkout…' : selectedCheckoutMode === 'escrow' ? link.fulfillmentType === 'service' ? 'Book with escrow' : 'Buy with escrow' : link.fulfillmentType === 'service' ? 'Book without escrow' : 'Pay without escrow'}
               </button>
-              <p className="text-xs text-ink/50 text-center">{link.fulfillmentType === 'product' ? 'Your payment stays held until product delivery is confirmed.' : link.fulfillmentType === 'course' ? 'Your course access is released after payment is verified.' : 'Your service payment is sent directly to the seller after the charge is confirmed.'}</p>
+              {escrowCheckout && <p className="text-xs text-ink/50 text-center">For escrow orders, payment stays held until completion is confirmed or the default window ends. Disputes pause release.</p>}
               {seller.demoOnly && <p className="text-xs text-seal text-center">Demo seller listing. Real checkout is disabled.</p>}
             </form>
           ) : (
@@ -330,13 +393,26 @@ export default function PublicLinkPage() {
 
         {status === 'DIRECT_PAID' && (
           <div className="space-y-4">
-            <p className="certificate p-4 text-sm text-ink/70">Payment was confirmed and sent directly to the seller. This course/service purchase is not held in escrow.</p>
+            <p className="certificate p-4 text-sm text-ink/70">Payment was confirmed and sent directly to the seller. Escrit cannot hold or recover this money, but you can still submit a problem report below.</p>
             {link.fulfillmentType === 'service' && <p className="text-sm text-ink/65">The seller will coordinate your requested appointment directly. You can track completion from My orders.</p>}
             {data.courseAccess && <CourseAccess course={data.courseAccess} />}
           </div>
         )}
 
         {status === 'DIRECT_COMPLETED' && <div className="certificate p-4 text-sm text-ink/70">The service provider marked your direct booking complete. Your payment was settled directly after checkout.</div>}
+        {['DIRECT_PAID', 'DIRECT_COMPLETED'].includes(status) && (
+          transaction.complaintLogged
+            ? <p role="status" className="mt-3 rounded-lg border border-line p-4 text-sm text-ink/70">Your problem report has been recorded for Escrit review. The direct payment cannot be held or recovered.</p>
+            : <form onSubmit={reportDirectProblem} className="mt-3 space-y-3 rounded-lg border border-line p-4">
+              <label className="block text-sm">
+                <span className="font-medium">Report a problem</span>
+                <textarea required minLength={5} maxLength={500} rows={3} value={disputeReason} onChange={(event) => setDisputeReason(event.target.value)} className="mt-2 w-full rounded-lg border border-line bg-input px-3 py-2" />
+              </label>
+              <button type="submit" disabled={reportingProblem} className="min-h-11 rounded-lg border border-line px-4 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50">
+                {reportingProblem ? 'Submitting report…' : 'Submit problem report'}
+              </button>
+            </form>
+        )}
 
         {status === 'PAID_HELD' && (
           <div className="space-y-3">

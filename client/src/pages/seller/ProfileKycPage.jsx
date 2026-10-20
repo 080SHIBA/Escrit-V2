@@ -4,6 +4,7 @@ import ShopifyIntegration from '../../components/ShopifyIntegration.jsx';
 import { CheckCircleIcon, IdentityVerificationIcon, ShieldCheckIcon } from '../../components/icons.jsx';
 import { useKyc } from '../../hooks/useKyc.js';
 import { useProfile } from '../../hooks/useProfile.js';
+import KycSelfieCamera from '../../components/KycSelfieCamera.jsx';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { kycMocksEnabled } from '../../lib/kycMocks.js';
 import {
@@ -217,9 +218,7 @@ function StepContent({ step, form, setForm, files, setFiles, consent, setConsent
     return (
       <div>
         <h2 className="font-display text-xl">Selfie check</h2>
-        <p className="mt-1 text-sm text-ink/60">Take a clear photo of your face. Good light; no hats or sunglasses.</p>
-        <div className="mt-5 max-w-md"><FileDropzone label="Selfie" file={files.selfie} required capture="user" onChange={(file) => setFiles((current) => ({ ...current, selfie: file }))} /></div>
-        <ul className="mt-4 list-inside list-disc space-y-1 text-sm text-ink/60"><li>Face the camera in a well-lit place.</li><li>Remove hats and sunglasses.</li></ul>
+        <div className="mt-3 max-w-md"><KycSelfieCamera file={files.selfie} required onChange={(file) => setFiles((current) => ({ ...current, selfie: file }))} /></div>
       </div>
     );
   }

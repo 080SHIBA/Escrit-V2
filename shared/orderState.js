@@ -14,10 +14,13 @@ export const ORDER_FILTERS = Object.freeze([
   'Disputed',
 ]);
 
-export const DELIVERY_RELEASE_MS = 72 * 60 * 60 * 1000;
+import { DEFAULT_RELEASE_WINDOW_HOURS, normalizeReleaseWindowHours } from './releaseConditions.js';
 
-export function deliveryReleaseTime(deliveredAt) {
-  return new Date(new Date(deliveredAt).getTime() + DELIVERY_RELEASE_MS);
+export const DELIVERY_RELEASE_MS = DEFAULT_RELEASE_WINDOW_HOURS * 60 * 60 * 1000;
+
+export function deliveryReleaseTime(deliveredAt, releaseWindowHours = DEFAULT_RELEASE_WINDOW_HOURS) {
+  const releaseWindowMs = normalizeReleaseWindowHours(releaseWindowHours) * 60 * 60 * 1000;
+  return new Date(new Date(deliveredAt).getTime() + releaseWindowMs);
 }
 
 export function isAutomaticReleaseDue(transaction, now = new Date()) {

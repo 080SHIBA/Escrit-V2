@@ -6,6 +6,7 @@ import { BankIcon } from '../../components/icons.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import SpotlightTour from '../../components/SpotlightTour.jsx';
 import PhotoField from '../../components/PhotoField.jsx';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS, releaseRuleText } from '../../../../shared/releaseConditions.js';
 
 // One step per field, in the order they appear on the form.
 const TOUR_STEPS = [
@@ -27,7 +28,12 @@ const TOUR_STEPS = [
   {
     selector: '[data-tour="create-price"]',
     title: 'Set the price',
-    body: 'The buyer pays this amount into escrow at checkout. You receive it once they confirm delivery.',
+    body: 'The buyer pays this amount into escrow at checkout. They can confirm delivery to release funds early.',
+  },
+  {
+    selector: '[data-tour="create-release-condition"]',
+    title: 'Choose a standard review period',
+    body: 'Pick how long the buyer has to review delivery before funds are automatically released. The buyer sees and agrees to this before paying.',
   },
   {
     selector: '[data-tour="create-submit"]',
@@ -42,7 +48,13 @@ export default function CreateLink() {
   usePageTitle('New payment link');
   const navigate = useNavigate();
   const { hasBankAccount, seller } = useAuthContext();
-  const [form, setForm] = useState({ itemName: '', itemDescription: '', priceNaira: '', itemPhotoUrl: '' });
+  const [form, setForm] = useState({
+    itemName: '',
+    itemDescription: '',
+    priceNaira: '',
+    itemPhotoUrl: '',
+    releaseWindowHours: DEFAULT_RELEASE_WINDOW_HOURS,
+  });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -85,6 +97,7 @@ export default function CreateLink() {
         ...form,
         itemPhotoUrl: form.itemPhotoUrl.trim() || null,
         priceNaira: Number(form.priceNaira),
+        releaseWindowHours: Number(form.releaseWindowHours),
       });
       navigate(`/dashboard/links/${link._id}`);
     } catch (err) {
@@ -138,6 +151,26 @@ export default function CreateLink() {
             className={FIELD}
           />
         </label>
+
+        <fieldset data-tour="create-release-condition" className="rounded-xl border border-line bg-paper-2 p-4">
+          <legend className="px-1 text-sm font-medium">Buyer review period</legend>
+          <label className="mt-1 block">
+            <span className="sr-only">Choose when funds can automatically release</span>
+            <select
+              value={form.releaseWindowHours}
+              onChange={(event) => setForm((current) => ({ ...current, releaseWindowHours: Number(event.target.value) }))}
+              className={FIELD}
+            >
+              {RELEASE_WINDOW_OPTIONS.map((option) => (
+                <option key={option.hours} value={option.hours}>
+                  {option.label}{option.recommended ? ' (recommended)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-3 text-sm leading-6 text-ink/70">{releaseRuleText(form.releaseWindowHours)}</p>
+          <p className="mt-2 text-xs text-ink/55">The buyer can raise a dispute before the deadline to keep funds on hold. Custom release terms are not supported.</p>
+        </fieldset>
 
         {error && (
           <p className="text-dispute text-sm animate-fade-in-up" role="alert">

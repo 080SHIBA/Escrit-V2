@@ -51,7 +51,7 @@ export default function MediaPanel({ videoSrc }) {
       )}
       <div className="auth-media-copy">
         <strong>Buy, sell and get paid safely.</strong>
-        <span>Your money is held in escrow until the deal is done.</span>
+        <span>Escrow is available when offered; buyers can choose based on the listing.</span>
       </div>
     </aside>
   );

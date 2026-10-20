@@ -14,14 +14,18 @@ import { quoteCollectionFee } from '../services/paymentProvider.js';
 import { refundProductNoShow, resolveNonRefundableProductNoShow } from '../services/escrow.js';
 import { env } from '../config/env.js';
 import { deliveryReleaseTime } from '../../../shared/orderState.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
 
 export const linksRouter = Router();
 linksRouter.use(requireAuth);
+
+const releaseWindowValues = RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours);
 
 const createLinkSchema = Joi.object({
   itemName: Joi.string().min(2).max(120).required(),
   itemDescription: Joi.string().max(1000).allow('').default(''),
   termsSnapshot: Joi.string().trim().max(1500).allow('').default(''),
+  releaseWindowHours: Joi.number().integer().valid(...releaseWindowValues).default(DEFAULT_RELEASE_WINDOW_HOURS),
   // https only: browsers block http images on an https page.
   itemPhotoUrl: Joi.string().uri({ scheme: ['https'] }).max(500).allow(null).default(null),
   priceNaira: Joi.number().min(100).required(), // collected in naira, stored in kobo
@@ -44,13 +48,14 @@ linksRouter.post('/', validate(createLinkSchema), asyncHandler(async (req, res) 
     throw new AppError(422, 'Add a verified bank account before creating a payment link');
   }
 
-  const { itemName, itemDescription, termsSnapshot, itemPhotoUrl, priceNaira } = req.body;
+  const { itemName, itemDescription, termsSnapshot, itemPhotoUrl, priceNaira, releaseWindowHours } = req.body;
   const storedTermsSnapshot = termsSnapshot || itemDescription || 'The seller will confirm delivery details with you before checkout.';
   const link = await Link.create({
     sellerId: seller.id,
     itemName,
     itemDescription,
     termsSnapshot: storedTermsSnapshot,
+    releaseWindowHours,
     itemPhotoUrl,
     priceKobo: Math.round(priceNaira * 100),
     checkoutPriceKobo: Math.round(priceNaira * 100) + await quoteCollectionFee(Math.round(priceNaira * 100)),
@@ -156,7 +161,7 @@ linksRouter.patch('/:id/transactions/:txId/fulfillment', validate(fulfillmentSch
   tx.fulfillmentUpdatedAt = new Date();
   if (['DELIVERED', 'SERVICE_COMPLETE'].includes(req.body.status) && !tx.deliveredAt) {
     tx.deliveredAt = tx.fulfillmentUpdatedAt;
-    tx.releaseDueAt = deliveryReleaseTime(tx.fulfillmentUpdatedAt);
+    tx.releaseDueAt = deliveryReleaseTime(tx.fulfillmentUpdatedAt, tx.releaseWindowHours);
   }
   if (req.body.status === 'BUYER_NO_SHOW') {
     tx.buyerNoShowAt = new Date();

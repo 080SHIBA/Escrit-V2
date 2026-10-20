@@ -2,6 +2,9 @@
 // escrow status of its own. Each checkout creates a Transaction, which
 // holds all per-purchase state, so one link can serve many buyers.
 import mongoose from 'mongoose';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
+
+const releaseWindowValues = RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours);
 
 const scheduledDiscountSchema = new mongoose.Schema(
   {
@@ -20,6 +23,7 @@ const linkSchema = new mongoose.Schema(
     itemDescription: { type: String, trim: true, default: '' },
     termsSnapshot: { type: String, trim: true, default: '' },
     fulfillmentType: { type: String, enum: ['product', 'course', 'service'], default: 'product' },
+    releaseWindowHours: { type: Number, enum: releaseWindowValues, default: DEFAULT_RELEASE_WINDOW_HOURS },
     listingType: { type: String, enum: ['product', 'course', 'service'], default: null },
     listingId: { type: mongoose.Schema.Types.ObjectId, default: null },
     refundable: { type: Boolean, default: false },

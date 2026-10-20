@@ -43,15 +43,18 @@ export function useListingDraft() {
           price: String(draft.price || ''),
           images: draft.images || [],
           allowOffers: Boolean(draft.allowOffers),
+          paymentOptions: draft.paymentOptions || current.paymentOptions,
+          overridesDefault: Boolean(draft.overridesDefault),
           condition: draft.condition || current.condition,
           fulfillment: draft.fulfillment || current.fulfillment,
+          fulfillmentOverridesDefault: Boolean(draft.fulfillmentOverridesDefault),
           quantity: String(draft.quantity || 1),
           deliveryTime: draft.deliveryTime || '',
           format: draft.format || current.format,
           level: draft.level || current.level,
           duration: draft.duration || '',
         }));
-        updatePhotos((draft.images || []).map(photoFromUrl));
+        updatePhotos(() => (draft.images || []).map(photoFromUrl));
         setDraftId(draft._id || null);
       })
       .catch((cause) => {

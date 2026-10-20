@@ -31,6 +31,53 @@ const TYPE_CONFIG = {
   service: { Model: Service, Category: ServiceCategory },
 };
 
+const PAYMENT_OPTIONS = Object.freeze({
+  both: Object.freeze({ escrow: true, direct: true }),
+  escrow: Object.freeze({ escrow: true, direct: false }),
+  direct: Object.freeze({ escrow: false, direct: true }),
+});
+
+function transactionPreferencesFor(user) {
+  return {
+    paymentDefault: user?.transactionPreferences?.paymentDefault || 'both',
+    fulfilmentDefault: user?.transactionPreferences?.fulfilmentDefault
+      || user?.onboarding?.fulfilmentDefault
+      || 'delivery',
+  };
+}
+
+function effectivePaymentOptions(listing, seller) {
+  const defaults = transactionPreferencesFor(seller);
+  return listing.overridesDefault
+    ? listing.paymentOptions || PAYMENT_OPTIONS[defaults.paymentDefault]
+    : PAYMENT_OPTIONS[defaults.paymentDefault] || PAYMENT_OPTIONS.both;
+}
+
+function effectiveFulfilment(listing, seller) {
+  if (listing.fulfillmentOverridesDefault) return listing.fulfillmentMethod || listing.fulfillment || 'delivery';
+  const defaultValue = transactionPreferencesFor(seller).fulfilmentDefault;
+  return defaultValue === 'both' ? 'delivery-or-pickup' : defaultValue;
+}
+
+function paymentOptionLabel(options) {
+  if (options.escrow && options.direct) return 'Escrow optional';
+  return options.escrow ? 'Escrow only' : 'No escrow';
+}
+
+function transactionTermsSnapshot(listing, options, checkoutMode, fulfilment) {
+  const paymentTerms = checkoutMode === 'escrow'
+    ? 'Payment method: Escrit escrow. Funds are held until the buyer confirms completion or the order release window ends.'
+    : 'Payment method: direct payment without escrow. Escrit cannot hold or recover this money, but buyers can still report problems.';
+  const offerTerms = options.escrow && options.direct
+    ? 'This listing offers both payment options; the buyer selected one at checkout.'
+    : options.escrow
+      ? 'This listing accepts escrow payment only.'
+      : 'This listing accepts payment without escrow only.';
+  return [listing.title, listing.description, paymentTerms, offerTerms, fulfilment ? `Fulfilment: ${fulfilment}.` : '']
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 const publicListingsQuerySchema = Joi.object({
   q: Joi.string().trim().max(100).allow('').default(''),
   type: Joi.string().valid('all', 'product', 'course', 'service').default('all'),
@@ -47,6 +94,7 @@ function escapeRegex(value) {
 function publicListing(item, type) {
   const seller = item.seller;
   if (seller) sanitizePublicSeller(seller);
+  const paymentOptions = seller ? effectivePaymentOptions(item, seller) : item.paymentOptions || PAYMENT_OPTIONS.both;
   return {
     id: String(item._id),
     type,
@@ -63,6 +111,9 @@ function publicListing(item, type) {
     ratingAvg: Number(item.averageRating || 0),
     ratingCount: Number(item.reviewCount || 0),
     isFeatured: Boolean(item.isFeatured),
+    paymentOptions,
+    paymentOptionLabel: paymentOptionLabel(paymentOptions),
+    fulfillmentMethod: seller ? effectiveFulfilment(item, seller) : item.fulfillmentMethod,
     createdAt: item.createdAt,
   };
 }
@@ -70,7 +121,8 @@ function publicListing(item, type) {
 async function loadListing(listingType, listingId) {
   const config = TYPE_CONFIG[listingType];
   if (!config) throw new AppError(400, 'Unsupported listing type');
-  const item = await config.Model.findOne({ _id: listingId, isActive: true, isVerified: true }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed');
+  const item = await config.Model.findOne({ _id: listingId, isActive: true, isVerified: true })
+    .populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
   if (item?.seller) sanitizePublicSeller(item.seller);
   if (!item) throw new AppError(404, 'Listing is no longer available');
   return item;
@@ -95,6 +147,9 @@ async function populateSavedItems(entries) {
     listing: {
       ...listing.toObject(),
       buyerPriceKobo: priceByLinkId.get(String(listing.escrowLinkId)) ?? null,
+      paymentOptions: effectivePaymentOptions(listing, listing.seller),
+      paymentOptionLabel: paymentOptionLabel(effectivePaymentOptions(listing, listing.seller)),
+      fulfillmentMethod: entry.listingType === 'product' ? effectiveFulfilment(listing, listing.seller) : undefined,
     },
     quantity: entry.quantity || 1,
   }));
@@ -285,34 +340,72 @@ marketplaceRouter.get('/me/listings', requireAuth, asyncHandler(async (req, res)
   res.json({ listings: groups.flat() });
 }));
 
-const listingActiveSchema = Joi.object({ active: Joi.boolean().required() });
-marketplaceRouter.patch('/me/listings/:type/:id', requireAuth, validate(listingActiveSchema), asyncHandler(async (req, res) => {
+const listingUpdateSchema = Joi.object({
+  active: Joi.boolean(),
+  paymentOptions: Joi.object({
+    escrow: Joi.boolean().required(),
+    direct: Joi.boolean().required(),
+  }),
+  overridesDefault: Joi.boolean(),
+  fulfillmentMethod: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download'),
+  fulfillmentOverridesDefault: Joi.boolean(),
+}).min(1);
+marketplaceRouter.patch('/me/listings/:type/:id', requireAuth, validate(listingUpdateSchema), asyncHandler(async (req, res) => {
   const config = TYPE_CONFIG[req.params.type];
   if (!config) throw new AppError(400, 'Unsupported listing type');
-  const item = await config.Model.findOneAndUpdate(
-    { _id: req.params.id, seller: req.sellerId },
-    { isActive: req.body.active },
-    { new: true }
-  );
+  const [item, seller] = await Promise.all([
+    config.Model.findOne({ _id: req.params.id, seller: req.sellerId }),
+    User.findById(req.sellerId),
+  ]);
   if (!item) throw new AppError(404, 'Listing not found');
+  if (!seller) throw new AppError(404, 'Seller not found');
+  if (req.body.active !== undefined) item.isActive = req.body.active;
+  if (req.body.paymentOptions !== undefined || req.body.overridesDefault !== undefined) {
+    const overridesDefault = req.body.overridesDefault
+      ?? (req.body.paymentOptions !== undefined ? true : item.overridesDefault);
+    const paymentOptions = effectivePaymentOptions({
+      overridesDefault,
+      paymentOptions: req.body.paymentOptions || item.paymentOptions,
+    }, seller);
+    if (!paymentOptions || (!paymentOptions.escrow && !paymentOptions.direct)) {
+      throw new AppError(400, 'Choose at least one payment option.');
+    }
+    item.paymentOptions = paymentOptions;
+    item.overridesDefault = overridesDefault;
+  }
+  if (req.params.type === 'product' && (req.body.fulfillmentMethod !== undefined || req.body.fulfillmentOverridesDefault !== undefined)) {
+    item.fulfillmentOverridesDefault = req.body.fulfillmentOverridesDefault
+      ?? (req.body.fulfillmentMethod !== undefined ? true : item.fulfillmentOverridesDefault);
+    item.fulfillmentMethod = item.fulfillmentOverridesDefault
+      ? req.body.fulfillmentMethod || item.fulfillmentMethod
+      : effectiveFulfilment({}, seller);
+  }
+  await item.save();
   res.json({ item });
 }));
 
-marketplaceRouter.post('/me/cart/checkout', requireAuth, asyncHandler(async (req, res) => {
+const cartCheckoutSchema = Joi.object({
+  checkoutMode: Joi.string().valid('escrow', 'direct').default('escrow'),
+});
+
+marketplaceRouter.post('/me/cart/checkout', requireAuth, validate(cartCheckoutSchema), asyncHandler(async (req, res) => {
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
   if (!buyer.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
   const items = await populateSavedItems(buyer.cartItems);
   if (!items.length) throw new AppError(409, 'Your cart is empty');
-  if (items.some((entry) => entry.listingType !== 'product')) {
-    throw new AppError(409, 'Services use direct booking. Products and courses are checked out from the cart.');
+  const checkoutMode = req.body.checkoutMode;
+  if (items.some((entry) => !entry.listing.paymentOptions[checkoutMode === 'escrow' ? 'escrow' : 'direct'])) {
+    throw new AppError(409, 'The selected payment option is not available for every listing in your cart.');
   }
 
   const checkoutLines = items.map(({ listingType, listing, quantity }) => ({
     listingType,
-    listing,
     quantity: listingType === 'product' ? quantity : 1,
     linkId: listing.escrowLinkId,
+    paymentOptions: listing.paymentOptions,
+    listing,
+    fulfillmentMethod: listing.fulfillmentMethod,
   }));
   if (checkoutLines.some((line) => !line.linkId)) throw new AppError(409, 'A cart listing is missing its escrow checkout');
 
@@ -348,6 +441,9 @@ marketplaceRouter.post('/me/cart/checkout', requireAuth, asyncHandler(async (req
     buyerUserId: buyer._id,
     buyerEmail: buyer.email,
     checkoutQuantity: line.quantity,
+    checkoutMode,
+    termsAcceptedAt: new Date(),
+    termsSnapshot: transactionTermsSnapshot(line.listing, line.paymentOptions, checkoutMode, line.fulfillmentMethod),
   })));
 
   try {
@@ -446,6 +542,12 @@ const createListingSchema = Joi.object({
   stock: Joi.number().min(0).default(1),
   condition: Joi.string().valid('new', 'used', 'refurbished').default('new'),
   fulfillmentMethod: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download'),
+  paymentOptions: Joi.object({
+    escrow: Joi.boolean().required(),
+    direct: Joi.boolean().required(),
+  }).default({ escrow: true, direct: true }),
+  overridesDefault: Joi.boolean().default(false),
+  fulfillmentOverridesDefault: Joi.boolean().default(false),
   negotiable: Joi.boolean().default(false),
   refundable: Joi.boolean().default(false),
   deliveryOptions: Joi.array().items(Joi.object({
@@ -513,8 +615,17 @@ async function createMarketplaceListing(type, body, sellerId) {
   if (!seller) throw new AppError(404, 'Seller not found');
   if (seller.kycStatus !== 'verified') throw new AppError(422, 'Complete identity verification in Profile & KYC before listing');
 
+  const paymentOptions = body.overridesDefault
+    ? body.paymentOptions
+    : PAYMENT_OPTIONS[transactionPreferencesFor(seller).paymentDefault];
+  if (!paymentOptions || (!paymentOptions.escrow && !paymentOptions.direct)) {
+    throw new AppError(400, 'Choose at least one payment option.');
+  }
+  const fulfillmentMethod = body.fulfillmentOverridesDefault
+    ? body.fulfillmentMethod
+    : effectiveFulfilment({}, seller);
   const priceNaira = type === 'service' ? Number(body.basePrice || 0) : Number(body.price || 0);
-  if (priceNaira < 100) throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more to use escrow');
+  if (priceNaira < 100) throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more.');
 
   const categoryResult = await ensureCategory(type, body.category, seller._id);
   const payload = {
@@ -523,10 +634,21 @@ async function createMarketplaceListing(type, body, sellerId) {
     category: categoryResult.name,
     categoryReviewStatus: categoryResult.approved ? 'approved' : 'pending',
     images: Array.isArray(body.images) ? body.images : [],
+    paymentOptions,
+    overridesDefault: Boolean(body.overridesDefault),
+    fulfillmentOverridesDefault: Boolean(body.fulfillmentOverridesDefault),
   };
   if (type === 'product') {
     payload.price = Number(body.price || 0);
     payload.stock = Number(body.stock || 1);
+    payload.fulfillmentMethod = fulfillmentMethod;
+    payload.deliveryOptions = fulfillmentMethod === 'delivery'
+      ? [{ method: 'seller_delivery', fee: 0 }]
+      : fulfillmentMethod === 'pickup'
+        ? [{ method: 'pickup', fee: 0 }]
+        : fulfillmentMethod === 'delivery-or-pickup'
+          ? [{ method: 'seller_delivery', fee: 0 }, { method: 'pickup', fee: 0 }]
+          : [{ method: 'pickup', fee: 0 }];
   }
   if (type === 'course') {
     payload.price = Number(body.price || 0);
@@ -579,6 +701,12 @@ const listingDraftSchema = Joi.object({
   allowOffers: Joi.boolean().default(false),
   condition: Joi.string().valid('new', 'used').default('new'),
   fulfillment: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download').default('delivery'),
+  paymentOptions: Joi.object({
+    escrow: Joi.boolean().required(),
+    direct: Joi.boolean().required(),
+  }).default({ escrow: true, direct: true }),
+  overridesDefault: Joi.boolean().default(false),
+  fulfillmentOverridesDefault: Joi.boolean().default(false),
   quantity: Joi.number().integer().min(1).max(100000).default(1),
   deliveryTime: Joi.string().max(120).allow('').default(''),
   format: Joi.string().valid('self-paced-videos', 'live-cohort', 'pdf-ebook').default('self-paced-videos'),
@@ -589,8 +717,10 @@ const listingDraftSchema = Joi.object({
 function validatePublishableListing(listing) {
   if (listing.title.trim().length < 5) throw new AppError(400, 'Add a title with at least 5 characters.');
   if (!listing.category) throw new AppError(400, 'Choose a category.');
-  if (listing.description.trim().length < 20) throw new AppError(400, 'Add a description with at least 20 characters.');
   if (listing.price <= 0) throw new AppError(400, 'Enter a price above zero.');
+  if (listing.overridesDefault && !listing.paymentOptions.escrow && !listing.paymentOptions.direct) {
+    throw new AppError(400, 'Choose at least one payment option.');
+  }
   if (['product', 'course'].includes(listing.type) && listing.images.length < 1) throw new AppError(400, 'Add at least one photo.');
   if (listing.type === 'service' && !listing.deliveryTime.trim()) throw new AppError(400, 'Add an estimated service delivery time.');
   if (listing.type === 'course' && !listing.duration.trim()) throw new AppError(400, 'Add a course duration or number of lessons.');
@@ -602,6 +732,9 @@ function marketplacePayload(listing) {
     category: listing.category,
     description: listing.description,
     images: listing.images,
+    paymentOptions: listing.paymentOptions,
+    overridesDefault: listing.overridesDefault,
+    fulfillmentOverridesDefault: listing.fulfillmentOverridesDefault,
   };
   if (listing.type === 'product') {
     const deliveryOptions = listing.fulfillment === 'delivery'
@@ -617,6 +750,7 @@ function marketplacePayload(listing) {
       stock: listing.quantity,
       condition: listing.condition,
       fulfillmentMethod: listing.fulfillment,
+      fulfillmentOverridesDefault: listing.fulfillmentOverridesDefault,
       deliveryOptions,
       negotiable: listing.allowOffers,
     };
@@ -653,7 +787,7 @@ listingWorkflowRouter.get('/', asyncHandler(async (req, res) => {
     const items = await Model.find(filter)
       .sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1, _id: -1 })
       .limit(pageSize)
-      .populate('seller', 'businessName displayName fullName profilePictureUrl kycStatus averageRating reviewCount')
+      .populate('seller', 'businessName displayName fullName profilePictureUrl kycStatus averageRating reviewCount transactionPreferences onboarding.fulfilmentDefault')
       .lean();
     return items.map((item) => publicListing(item, type));
   }));
@@ -712,9 +846,9 @@ listingWorkflowRouter.patch('/:id', asyncHandler(async (req, res) => {
 
 marketplaceRouter.get('/overview', asyncHandler(async (_req, res) => {
   const [products, courses, services, reviews] = await Promise.all([
-    Product.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
-    Course.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
-    Service.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed'),
+    Product.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed transactionPreferences onboarding.fulfilmentDefault'),
+    Course.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed transactionPreferences onboarding.fulfilmentDefault'),
+    Service.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).limit(4).populate('seller', 'businessName displayName fullName isDemoSeed transactionPreferences onboarding.fulfilmentDefault'),
     Review.find({ comment: { $ne: '' } }).sort({ createdAt: -1 }).limit(6).populate('buyerId', 'businessName').populate('sellerId', 'businessName displayName fullName'),
   ]);
 
@@ -724,7 +858,13 @@ marketplaceRouter.get('/overview', asyncHandler(async (_req, res) => {
   const links = await Link.find({ _id: { $in: allItems.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
   const checkoutPriceById = new Map(links.map((link) => [String(link._id), link.checkoutPriceKobo]));
-  for (const item of allItems) item.set('buyerPriceKobo', checkoutPriceById.get(String(item.escrowLinkId)) || null, { strict: false });
+  for (const item of allItems) {
+    const options = effectivePaymentOptions(item, item.seller);
+    item.set('buyerPriceKobo', checkoutPriceById.get(String(item.escrowLinkId)) || null, { strict: false });
+    item.set('paymentOptions', options, { strict: false });
+    item.set('paymentOptionLabel', paymentOptionLabel(options), { strict: false });
+    item.set('fulfillmentMethod', effectiveFulfilment(item, item.seller), { strict: false });
+  }
 
   res.json({
     products,
@@ -740,7 +880,7 @@ marketplaceRouter.get('/overview', asyncHandler(async (_req, res) => {
 }));
 
 marketplaceRouter.get('/seller/:sellerId', asyncHandler(async (req, res) => {
-  const seller = await User.findById(req.params.sellerId).select('businessName displayName fullName profilePictureUrl bio city createdAt kycStatus onboarding.fulfilmentDefault isDemoSeed');
+  const seller = await User.findById(req.params.sellerId).select('businessName displayName fullName profilePictureUrl bio city createdAt kycStatus onboarding.fulfilmentDefault transactionPreferences isDemoSeed');
   if (!seller) throw new AppError(404, 'Seller not found');
   const [products, courses, services] = await Promise.all([
     Product.find({ seller: seller._id, isActive: true, isVerified: true, categoryReviewStatus: 'approved' }).sort({ createdAt: -1 }),
@@ -780,14 +920,20 @@ marketplaceRouter.get('/seller/:sellerId', asyncHandler(async (req, res) => {
       city: seller.city,
       createdAt: seller.createdAt,
       identityVerified: seller.kycStatus === 'verified',
-      fulfilmentDefault: seller.onboarding?.fulfilmentDefault || '',
+      fulfilmentDefault: transactionPreferencesFor(seller).fulfilmentDefault,
       averageRating: stats.averageRating,
       reviewCount: stats.reviewCount,
     },
-    listings: listings.map((item) => ({
-      ...item,
-      buyerPriceKobo: checkoutPriceById.get(String(item.escrowLinkId)) ?? null,
-    })),
+    listings: listings.map((item) => {
+      const options = effectivePaymentOptions(item, seller);
+      return {
+        ...item,
+        buyerPriceKobo: checkoutPriceById.get(String(item.escrowLinkId)) ?? null,
+        paymentOptions: options,
+        paymentOptionLabel: paymentOptionLabel(options),
+        fulfillmentMethod: item.listingType === 'product' ? effectiveFulfilment(item, seller) : undefined,
+      };
+    }),
   });
 }));
 
@@ -815,45 +961,62 @@ marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Unsupported listing type' });
   }
 
-  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed');
+  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
   items.forEach((item) => sanitizePublicSeller(item.seller));
   const links = await Link.find({ _id: { $in: items.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
   const checkoutPriceById = new Map(links.map((link) => [String(link._id), link.checkoutPriceKobo]));
-  for (const item of items) item.set('buyerPriceKobo', checkoutPriceById.get(String(item.escrowLinkId)) || null, { strict: false });
+  for (const item of items) {
+    const options = effectivePaymentOptions(item, item.seller);
+    item.set('buyerPriceKobo', checkoutPriceById.get(String(item.escrowLinkId)) || null, { strict: false });
+    item.set('paymentOptions', options, { strict: false });
+    item.set('paymentOptionLabel', paymentOptionLabel(options), { strict: false });
+    item.set('fulfillmentMethod', effectiveFulfilment(item, item.seller), { strict: false });
+  }
   res.json({ items });
 }));
 
 marketplaceRouter.get('/:type/:id', asyncHandler(async (req, res) => {
   const config = TYPE_CONFIG[req.params.type];
   if (!config) throw new AppError(400, 'Unsupported listing type');
-  const item = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true }).populate('seller', 'businessName displayName fullName profilePictureUrl bio isDemoSeed');
+  const item = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true }).populate('seller', 'businessName displayName fullName profilePictureUrl bio isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
   if (!item) throw new AppError(404, 'Listing not found');
   if (item.seller) sanitizePublicSeller(item.seller);
   const link = item.escrowLinkId ? await Link.findById(item.escrowLinkId) : null;
   const buyerPriceKobo = link ? await ensureCheckoutPrice(link) : null;
-  res.json({ item: { ...item.toObject(), buyerPriceKobo } });
+  const paymentOptions = effectivePaymentOptions(item, item.seller);
+  res.json({ item: {
+    ...item.toObject(),
+    buyerPriceKobo,
+    paymentOptions,
+    paymentOptionLabel: paymentOptionLabel(paymentOptions),
+    fulfillmentMethod: req.params.type === 'product' ? effectiveFulfilment(item, item.seller) : undefined,
+  } });
 }));
 
 const directCheckoutSchema = Joi.object({
+  checkoutMode: Joi.string().valid('escrow', 'direct').default('direct'),
   appointmentAt: Joi.date().iso().allow(null).default(null),
 });
 
 marketplaceRouter.post('/:type/:id/checkout', requireAuth, validate(directCheckoutSchema), asyncHandler(async (req, res) => {
   const listingType = req.params.type;
-  if (listingType !== 'service') throw new AppError(400, 'Courses use the escrow cart; services use direct booking');
   const config = TYPE_CONFIG[listingType];
+  if (!config) throw new AppError(400, 'Unsupported listing type');
   const listing = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true });
   if (!listing) throw new AppError(404, 'Listing is no longer available');
   const buyer = await User.findById(req.sellerId);
   if (!buyer?.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
   const seller = await User.findById(listing.seller);
-  if (!seller?.bankAccount) throw new AppError(409, 'This seller is not ready to receive payment yet');
-  if (seller.isDemoSeed) throw new AppError(409, 'Demo listings are for browsing only and cannot accept real payment.');
+  const paymentOptions = effectivePaymentOptions(listing, seller);
+  const checkoutMode = req.body.checkoutMode;
+  if (!paymentOptions[checkoutMode]) throw new AppError(409, 'This payment option is not available for this listing.');
+  if (checkoutMode === 'direct' && !seller?.bankAccount) throw new AppError(409, 'This seller is not ready to receive payment yet');
+  if (seller?.isDemoSeed) throw new AppError(409, 'Demo listings are for browsing only and cannot accept real payment.');
   const link = await Link.findOne({ listingType, listingId: listing._id, active: true });
   if (!link) throw new AppError(409, 'Direct checkout is not available for this listing');
   const priceKobo = listingType === 'service' ? link.priceKobo : Math.round(listing.price * 100);
-  if (!Number.isFinite(priceKobo) || priceKobo < 10000) throw new AppError(409, 'This listing does not have a direct checkout price');
+  if (!Number.isFinite(priceKobo) || priceKobo < 10000) throw new AppError(409, 'This listing does not have a checkout price');
   const buyerPriceKobo = await ensureCheckoutPrice(link);
   if (buyerPriceKobo == null) throw new AppError(503, 'The all-inclusive checkout price is temporarily unavailable');
 
@@ -862,12 +1025,19 @@ marketplaceRouter.post('/:type/:id/checkout', requireAuth, validate(directChecko
     linkId: link._id,
     paymentProvider: await getPaymentProviderName(),
     paymentReference: reference,
-    checkoutMode: 'direct',
+    checkoutMode,
     checkoutTotalKobo: buyerPriceKobo,
     buyerPriceKoboSnapshot: buyerPriceKobo,
     sellerPayoutBaseKobo: link.checkoutBasePriceKobo ?? link.priceKobo,
     buyerUserId: buyer._id,
     buyerEmail: buyer.email,
+    termsAcceptedAt: new Date(),
+    termsSnapshot: transactionTermsSnapshot(
+      listing,
+      paymentOptions,
+      checkoutMode,
+      listingType === 'product' ? effectiveFulfilment(listing, seller) : '',
+    ),
     fulfillmentNote: req.body.appointmentAt ? `Requested appointment: ${req.body.appointmentAt.toISOString()}` : '',
   });
   try {
@@ -876,7 +1046,7 @@ marketplaceRouter.post('/:type/:id/checkout', requireAuth, validate(directChecko
       amountKobo: buyerPriceKobo,
       reference,
       callbackUrl: `${env.clientOrigins[0]}/r/${link.id}/t/${transaction.id}/result`,
-      metadata: { transactionId: transaction.id, listingType, listingId: listing.id, checkoutMode: 'direct' },
+      metadata: { transactionId: transaction.id, listingType, listingId: listing.id, checkoutMode },
     });
     transaction.paymentProviderTransactionId = payment.id ? String(payment.id) : null;
     await transaction.save();

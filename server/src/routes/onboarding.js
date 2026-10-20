@@ -32,6 +32,35 @@ const onboardingPatchSchema = Joi.object({
   flow: Joi.string().valid('new-user', 'escrow-link'),
   completed: Joi.boolean(),
 }).min(1);
+const transactionPreferencesPatchSchema = Joi.object({
+  paymentDefault: Joi.string().valid('both', 'escrow', 'direct'),
+  fulfilmentDefault: Joi.string().valid('delivery', 'pickup', 'both'),
+}).min(1);
+
+function transactionPreferencesFor(user) {
+  return {
+    paymentDefault: user.transactionPreferences?.paymentDefault || 'both',
+    fulfilmentDefault: user.transactionPreferences?.fulfilmentDefault
+      || (user.onboarding?.fulfilmentDefault === 'both' ? 'both' : user.onboarding?.fulfilmentDefault)
+      || 'delivery',
+  };
+}
+
+onboardingRouter.get('/transaction-preferences', asyncHandler(async (req, res) => {
+  const user = await User.findById(req.sellerId);
+  if (!user) throw new AppError(404, 'Seller not found');
+  res.json({ preferences: transactionPreferencesFor(user) });
+}));
+
+onboardingRouter.patch('/transaction-preferences', validate(transactionPreferencesPatchSchema), asyncHandler(async (req, res) => {
+  const user = await User.findById(req.sellerId);
+  if (!user) throw new AppError(404, 'Seller not found');
+  for (const [key, value] of Object.entries(req.body)) {
+    user.set(`transactionPreferences.${key}`, value);
+  }
+  await user.save();
+  res.json({ preferences: transactionPreferencesFor(user) });
+}));
 
 onboardingRouter.get('/onboarding', asyncHandler(async (req, res) => {
   const user = await User.findById(req.sellerId);

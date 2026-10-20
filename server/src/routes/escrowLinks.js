@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { ensureCheckoutPrice } from '../services/pricing.js';
 import { classifyEscrowPreviewState } from '../utils/escrowPreviewState.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../shared/releaseConditions.js';
 
 export const escrowLinksRouter = Router();
 escrowLinksRouter.use(requireAuth);
@@ -19,7 +20,7 @@ escrowLinksRouter.get('/:id/preview', asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(id)) return res.json({ preview: invalidPreview() });
 
   const link = await Link.findById(id).select(
-    'itemName priceKobo checkoutPriceKobo termsSnapshot fulfillmentType active expiresAt sellerId'
+    'itemName priceKobo checkoutPriceKobo termsSnapshot fulfillmentType releaseWindowHours active expiresAt sellerId'
   );
   if (!link) return res.json({ preview: invalidPreview() });
 
@@ -50,7 +51,7 @@ escrowLinksRouter.get('/:id/preview', asyncHandler(async (req, res) => {
     from: seller?.displayName || seller?.businessName || 'Escrit seller',
     releaseRule: link.fulfillmentType === 'service'
       ? 'This service uses direct payment and is not held in escrow.'
-      : 'Funds are released according to the terms shown on the transaction page.',
+      : releaseRuleText(link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS, link.fulfillmentType),
     fees: 'Shown before you pay.',
     termsSnapshot: link.termsSnapshot || link.itemDescription || 'The seller will confirm delivery details with you before checkout.',
   };

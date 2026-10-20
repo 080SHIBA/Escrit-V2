@@ -7,6 +7,8 @@ import { kycMockHandlers, kycMocksEnabled } from './kycMocks.js';
 import { listingMockHandlers, listingMocksEnabled } from './listingMocks.js';
 import { marketplaceMockHandlers, marketplaceMocksEnabled } from './marketplaceMocks.js';
 import { onboardingMockHandlers, onboardingMocksEnabled } from './onboardingMocks.js';
+import { transactionPreferencesMockHandlers } from './transactionPreferencesMocks.js';
+import { apiUrl } from './apiBase.js';
 
 let accessToken = null;
 
@@ -24,8 +26,6 @@ export function getRealtimeUrl() {
 
 // Empty in development (Vite proxies /api to the local server). In
 // production, set VITE_API_URL to the API's full URL.
-const API_BASE = import.meta.env.DEV ? '' : import.meta.env.VITE_API_URL || '';
-
 // Access tokens are short-lived, so an authed call can hit a 401 at any
 // time. One refresh is shared by all concurrent 401s to avoid a burst of
 // /auth/refresh requests.
@@ -33,7 +33,7 @@ let refreshPromise = null;
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE}/api/auth/refresh`, {
+    refreshPromise = fetch(apiUrl('/api/auth/refresh'), {
       method: 'POST',
       credentials: 'include',
     })
@@ -54,7 +54,7 @@ async function request(path, { method = 'GET', body, auth = false, signal } = {}
   const headers = { 'Content-Type': 'application/json' };
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-  const res = await fetch(`${API_BASE}/api${path}`, {
+  const res = await fetch(apiUrl(`/api${path}`), {
     method,
     headers,
     credentials: 'include', // sends the refresh cookie
@@ -102,7 +102,7 @@ async function onboardingRequest(method, body) {
 function uploadKycRequest(formData, onProgress, retry = false) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_BASE}/api/kyc`);
+    xhr.open('POST', apiUrl('/api/kyc'));
     xhr.withCredentials = true;
     if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     xhr.upload.onprogress = (event) => {
@@ -152,6 +152,12 @@ export const api = {
   getOnboarding: (account) => onboardingMocksEnabled
     ? onboardingMockHandlers.get(account)
     : onboardingRequest('GET'),
+  getTransactionPreferences: () => listingMocksEnabled
+    ? transactionPreferencesMockHandlers.get()
+    : request('/me/transaction-preferences', { auth: true }),
+  saveTransactionPreferences: (preferences) => listingMocksEnabled
+    ? transactionPreferencesMockHandlers.save(preferences)
+    : request('/me/transaction-preferences', { method: 'PATCH', body: preferences, auth: true }),
   saveOnboarding: (onboarding, account) => onboardingMocksEnabled
     ? onboardingMockHandlers.save(account, onboarding)
     : onboardingRequest('PATCH', onboarding),
@@ -325,7 +331,7 @@ export const api = {
     notifyCartChanged();
     return result;
   },
-  checkoutCart: () => request('/marketplace/me/cart/checkout', { method: 'POST', body: {}, auth: true }),
+  checkoutCart: (payload = {}) => request('/marketplace/me/cart/checkout', { method: 'POST', body: payload, auth: true }),
   setCartQuantity: async (listingType, listingId, quantity) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.setQuantity(listingType, listingId, quantity)
@@ -356,6 +362,7 @@ export const api = {
   getPublicTransaction: (linkId, txId) => request(`/r/${linkId}/t/${txId}`, { auth: true }),
   confirmReceipt: (linkId, txId) => request(`/r/${linkId}/t/${txId}/confirm-receipt`, { method: 'POST', auth: true }),
   raiseDispute: (linkId, txId, payload) => request(`/r/${linkId}/t/${txId}/dispute`, { method: 'POST', body: payload, auth: true }),
+  reportDirectProblem: (linkId, txId, payload) => request(`/r/${linkId}/t/${txId}/complaint`, { method: 'POST', body: payload, auth: true }),
   reportServiceNoShow: (linkId, txId, payload) => request(`/r/${linkId}/t/${txId}/no-show-reason`, { method: 'POST', body: payload, auth: true }),
   submitBuyerEvidence: (linkId, txId, payload) => request(`/r/${linkId}/t/${txId}/evidence`, { method: 'POST', body: payload, auth: true }),
   resolveProductNoShow: (linkId, txId, outcome) => request(`/links/${linkId}/transactions/${txId}/no-show-resolution`, { method: 'POST', body: { outcome }, auth: true }),

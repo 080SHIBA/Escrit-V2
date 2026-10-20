@@ -15,11 +15,29 @@ test('listing validation requires common fields and product photos', () => {
   assert.deepEqual(validateListing(DEFAULT_LISTING_FORM), {
     title: 'Use at least 5 characters for the title.',
     category: 'Choose a category.',
-    description: 'Add at least 20 characters to the description.',
     price: 'Enter a price above ₦0 using digits only.',
     photos: 'Add at least one photo before publishing.',
   });
   assert.deepEqual(validateListing(validProduct, [photo]), {});
+});
+
+test('listing description is optional but limited to 1,000 characters', () => {
+  assert.equal(validateListing({ ...validProduct, description: '' }, [photo]).description, undefined);
+  assert.equal(validateListing({ ...validProduct, description: 'x'.repeat(1001) }, [photo]).description, 'Keep the description to 1,000 characters or fewer.');
+});
+
+test('publishing is blocked when a listing overrides defaults with both options disabled', () => {
+  const errors = validateListing({
+    ...validProduct,
+    overridesDefault: true,
+    paymentOptions: { escrow: false, direct: false },
+  }, [photo]);
+  assert.equal(errors.paymentOptions, 'Choose at least one payment option.');
+  assert.deepEqual(validateListing({
+    ...validProduct,
+    overridesDefault: true,
+    paymentOptions: { escrow: true, direct: false },
+  }, [photo]), {});
 });
 
 test('service and course have their own publish requirements', () => {

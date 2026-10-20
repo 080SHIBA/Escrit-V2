@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck, ShieldCheck, Star } from 'lucide-react';
+import { BadgeCheck, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ListingDetailsDialog from './ListingDetailsDialog.jsx';
 
@@ -67,7 +67,7 @@ function ListingTile({ listing, onOpen }) {
           </span>
           <span className="landing-listing-bottom">
             <strong>₦{money.format(Number(listing.price) || 0)}</strong>
-            <span><ShieldCheck size={14} aria-hidden="true" /> Escrow protected</span>
+            <span>{listing.paymentOptionLabel || 'Escrow optional'}</span>
           </span>
         </span>
       </div>

@@ -9,6 +9,7 @@ import { CopyIcon, ClockIcon, AlertIcon } from '../../components/icons.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import SpotlightTour from '../../components/SpotlightTour.jsx';
 import PhotoField from '../../components/PhotoField.jsx';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../../shared/releaseConditions.js';
 
 const TOUR_STEPS = [
   {
@@ -123,6 +124,15 @@ export default function LinkDetail() {
       </div>
 
       {link.itemDescription && <p className="text-ink/60 mb-4 break-words">{link.itemDescription}</p>}
+
+      {link.fulfillmentType !== 'service' && (
+        <section className="certificate mb-4 p-4" aria-labelledby="release-condition-heading">
+          <h2 id="release-condition-heading" className="text-sm font-semibold">Agreed release condition</h2>
+          <p className="mt-1 text-sm leading-6 text-ink/70">
+            {releaseRuleText(link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS, link.fulfillmentType)}
+          </p>
+        </section>
+      )}
 
       <ItemPhoto
         src={link.itemPhotoUrl}

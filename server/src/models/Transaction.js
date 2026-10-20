@@ -3,6 +3,9 @@
 // never set from client input. A link can have many transactions open at
 // once, each resolved independently.
 import mongoose from 'mongoose';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
+
+const releaseWindowValues = RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours);
 
 export const TX_STATUS = Object.freeze({
   CREATED: 'CREATED',
@@ -50,6 +53,7 @@ const transactionSchema = new mongoose.Schema(
     paymentProvider: { type: String, enum: ['paystack', 'flutterwave'], default: 'paystack' },
     paymentReference: { type: String, default: null, index: true },
     checkoutMode: { type: String, enum: ['escrow', 'direct'], default: 'escrow' },
+    directInventoryReserved: { type: Boolean, default: false },
     checkoutTotalKobo: { type: Number, default: null },
     buyerPriceKoboSnapshot: { type: Number, default: null },
     sellerPayoutBaseKobo: { type: Number, default: null },
@@ -60,6 +64,7 @@ const transactionSchema = new mongoose.Schema(
     buyerPhone: { type: String, default: null },
     termsAcceptedAt: { type: Date, default: null },
     termsSnapshot: { type: String, default: '' },
+    releaseWindowHours: { type: Number, enum: releaseWindowValues, default: DEFAULT_RELEASE_WINDOW_HOURS },
 
     fulfillmentStatus: {
       type: String,

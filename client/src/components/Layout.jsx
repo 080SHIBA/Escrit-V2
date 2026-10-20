@@ -25,7 +25,6 @@ import {
 } from './icons.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 import MobileMenu from './MobileMenu.jsx';
-import PaymentModeRibbon from './PaymentModeRibbon.jsx';
 import LandingFooter from './landing/LandingFooter.jsx';
 import { api, getAccessToken, getRealtimeUrl } from '../lib/api.js';
 import { marketplaceMocksEnabled } from '../lib/marketplaceMocks.js';
@@ -61,7 +60,7 @@ function NavItem({ to, onClick, icon, label, active, badge, title, tourId }) {
   );
 }
 
-function ProfileMenu({ seller, onLogout, mobile = false }) {
+function ProfileMenu({ seller, onLogout }) {
   const closeMenu = (event) => event.currentTarget.closest('details')?.removeAttribute('open');
   return (
     <details className="relative">
@@ -80,12 +79,6 @@ function ProfileMenu({ seller, onLogout, mobile = false }) {
         <Link to="/dashboard/bank" onClick={closeMenu} className="rounded-lg px-3 py-2 text-sm text-ink/75 hover:bg-paper-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
           Bank and payouts
         </Link>
-        {mobile && (
-          <div className="flex items-center justify-between gap-2 border-y border-line px-3 py-2">
-            <span className="text-sm text-ink/60">Theme</span>
-            <ThemeToggle />
-          </div>
-        )}
         <button
           type="button"
           onClick={(event) => {
@@ -210,6 +203,7 @@ export default function Layout({ children }) {
     { key: 'notifications', to: '/account/notifications', label: 'Notifications', Icon: Bell, active: location.pathname === '/account/notifications', badge: notificationCount || undefined },
     { key: 'price-offers', to: '/account/price-offers', label: 'Product price offers', Icon: PriceOffersIcon, active: location.pathname === '/account/price-offers' },
     { key: 'credits', to: '/account/credits', label: 'Promotion credits', Icon: PromotionCreditsIcon, active: location.pathname === '/account/credits' },
+    { key: 'transaction-preferences', to: '/account/transaction-preferences', label: 'Transaction preferences', Icon: ShieldCheckIcon, active: location.pathname === '/account/transaction-preferences' },
     { key: 'profile', to: '/settings', label: 'Profile settings', Icon: IdentityVerificationIcon, active: location.pathname === '/settings' },
     ...(seller?.isAdmin
       ? [
@@ -275,8 +269,6 @@ export default function Layout({ children }) {
 
   return (
     <div className={`app-shell relative flex min-h-screen flex-col ${isHome ? 'is-public-home' : ''}`}>
-      {!isAuthRefresh && <PaymentModeRibbon />}
-
       {isAuthed && !isBuyerSide && !isAuthRefresh && (
         <aside
           id="seller-navigation"
@@ -465,7 +457,7 @@ export default function Layout({ children }) {
                 <CartIcon width={20} height={20} />
                 {cartCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}
               </Link>
-              <ProfileMenu seller={seller} onLogout={onLogout} mobile />
+              <ThemeToggle />
               <Link
                 to="/account/notifications"
                 aria-label={`Notifications, ${notificationCount} unread`}
@@ -530,7 +522,6 @@ export default function Layout({ children }) {
             <BottomNavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon width={20} height={20} />} />
             <BottomNavItem to="/marketplace" label="Market" icon={<CompassIcon width={20} height={20} />} />
             <BottomNavItem to="/account/storefront" label="My store" icon={<Store size={20} />} />
-            <BottomNavButton onClick={() => setMenuOpen(true)} label="Profile" icon={<UserIcon width={20} height={20} />} expanded={menuOpen} />
           </div>
         </nav>
       )}
@@ -579,14 +570,5 @@ function BottomNavItem({ to, label, icon, featured, badge }) {
       </span>
       <span className="text-[10px] font-medium leading-none">{label}</span>
     </Link>
-  );
-}
-
-function BottomNavButton({ buttonRef, onClick, label, icon, expanded }) {
-  return (
-    <button ref={buttonRef} type="button" onClick={onClick} title={label} aria-label={label} aria-expanded={expanded} aria-controls="mobile-menu" className="flex min-w-14 flex-col items-center justify-center gap-1 text-ink/60">
-      <span className="flex h-9 w-9 items-center justify-center">{icon}</span>
-      <span className="text-[10px] font-medium leading-none">{label}</span>
-    </button>
   );
 }

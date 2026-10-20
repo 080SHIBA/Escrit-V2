@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 // Theme is 'light', 'dark' or 'system'. The saved choice can be "system",
 // but the CSS class is always resolved to light or dark.
@@ -16,23 +17,21 @@ function applyResolvedTheme(resolved) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => localStorage.getItem(STORAGE_KEY) || 'dark');
-  const [resolved, setResolved] = useState(() => (theme === 'system' ? getSystemPref() : theme));
+  const location = useLocation();
+  const [theme, setThemeState] = useState(() => localStorage.getItem(STORAGE_KEY) || 'light');
+  const [systemTheme, setSystemTheme] = useState(getSystemPref);
+  const resolved = location.pathname === '/' ? 'light' : (theme === 'system' ? systemTheme : theme);
 
   useEffect(() => {
-    const next = theme === 'system' ? getSystemPref() : theme;
-    setResolved(next);
-    applyResolvedTheme(next);
-  }, [theme]);
+    applyResolvedTheme(resolved);
+  }, [resolved]);
 
   // Follow the operating system live when the choice is "system".
   useEffect(() => {
     if (theme !== 'system') return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     function onChange() {
-      const next = getSystemPref();
-      setResolved(next);
-      applyResolvedTheme(next);
+      setSystemTheme(getSystemPref());
     }
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);

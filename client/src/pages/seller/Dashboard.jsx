@@ -390,6 +390,7 @@ export default function Dashboard() {
             badge={!hasBankAccount ? 'Required' : null}
           />
           <DashboardActionCard to="/account/price-offers" title="Product price offers" description="Offers from buyers" Icon={PriceOffersIcon} />
+          <DashboardActionCard to="/account/transaction-preferences" title="Transaction preferences" description="Set payment and delivery defaults" Icon={ShieldCheckIcon} />
           <DashboardActionCard
             to="/account/credits"
             title="Promotion credits"

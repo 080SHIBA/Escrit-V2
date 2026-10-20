@@ -56,7 +56,7 @@ export function validateFile(file, { allowPdf = false } = {}) {
 export function validateStep(step, form, files, consent) {
   if (step === 0) return Object.values(validatePersonalDetails(form))[0] || '';
   if (step === 1) return validateFile(files.idFront, { allowPdf: true }) || (!files.idFront ? 'Upload the front of your ID.' : '');
-  if (step === 2) return validateFile(files.selfie) || (!files.selfie ? 'Upload a selfie.' : '');
+  if (step === 2) return validateFile(files.selfie) || (!files.selfie ? 'Complete the selfie liveness check.' : '');
   if (step === 3 && !consent) return 'Confirm that these details are yours and accurate.';
   return '';
 }

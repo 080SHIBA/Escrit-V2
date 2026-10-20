@@ -31,12 +31,30 @@ import ServiceOffers from './pages/buyer/ServiceOffers.jsx';
 import ProductOffers from './pages/buyer/ProductOffers.jsx';
 import PlatformCredits from './pages/seller/PlatformCredits.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
+import TransactionPreferencesPage from './pages/seller/TransactionPreferencesPage.jsx';
 import { orderMocksEnabled } from './lib/orderMocks.js';
 import { kycMocksEnabled } from './lib/kycMocks.js';
+import { useAuthContext } from './lib/AuthContext.jsx';
 
 function LegacyAuthRedirect({ to }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}`} replace />;
+}
+
+function HomeRoute() {
+  const { status } = useAuthContext();
+
+  if (status === 'authed') return <Navigate to="/marketplace" replace />;
+  if (status === 'checking') {
+    return (
+      <div className="space-y-3" aria-busy="true" aria-label="Checking your session">
+        <div className="skeleton h-8 w-48" />
+        <div className="skeleton h-24 w-full" />
+        <div className="skeleton h-24 w-full" />
+      </div>
+    );
+  }
+  return <Home />;
 }
 
 export default function App() {
@@ -48,7 +66,7 @@ export default function App() {
         <Route path="/confirm-email" element={<ConfirmEmailPage />} />
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
         {/* Public marketing page */}
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/marketplace/seller/:sellerId" element={<SellerStorefront />} />
         <Route path="/marketplace/:type/:id" element={<MarketplaceListing />} />
@@ -78,6 +96,7 @@ export default function App() {
         <Route path="/account/storefront" element={<RequireAuth><SellerStorefront /></RequireAuth>} />
         <Route path="/account/price-offers" element={<RequireAuth><ProductOffers /></RequireAuth>} />
         <Route path="/account/credits" element={<RequireAuth><PlatformCredits /></RequireAuth>} />
+        <Route path="/account/transaction-preferences" element={<RequireAuth><TransactionPreferencesPage /></RequireAuth>} />
 
         {/* Admin: the API enforces the ADMIN_EMAILS allowlist */}
         <Route path="/admin/disputes" element={<RequireAuth><Disputes /></RequireAuth>} />

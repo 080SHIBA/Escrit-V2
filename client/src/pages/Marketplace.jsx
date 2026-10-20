@@ -98,16 +98,6 @@ export default function Marketplace() {
     }
   }
 
-  async function buyDirectly(item) {
-    if (!requireBuyerAccount()) return;
-    try {
-      const { authorizationUrl } = await api.directCheckout(type, item._id);
-      window.location.assign(authorizationUrl);
-    } catch (err) {
-      setError(err.message || 'Direct checkout is unavailable.');
-    }
-  }
-
   async function toggleFavorite(item) {
     if (!requireBuyerAccount()) return;
     const key = `${type}:${item._id}`;
@@ -176,7 +166,7 @@ export default function Marketplace() {
         <div>
           <p className="eyebrow">ESCRIT MARKETPLACE</p>
           <h1 className="mt-2 font-display text-3xl sm:text-5xl">Compare before you commit.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">Shop products, discover courses, and compare services from independent sellers. Eligible product checkouts are protected by escrow.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">Shop products, discover courses, and compare services from independent sellers. Each listing shows whether escrow, direct payment, or both are available.</p>
         </div>
         <Link
           to={`/marketplace/new/${type}`}
@@ -289,6 +279,7 @@ export default function Marketplace() {
                     <p className="truncate text-sm font-semibold sm:text-base">{priceText}</p>
                     <span className="shrink-0 text-[10px] text-ink/55 sm:text-xs">{item.averageRating ? `★ ${Number(item.averageRating).toFixed(1)}` : item.isVerified ? 'Verified' : ''}</span>
                   </div>
+                  <p className="text-[10px] font-medium text-ink/55">{item.paymentOptionLabel || 'Escrow optional'}</p>
 
                   {isQuickViewOpen && <p className="line-clamp-3 border-t border-line pt-2 text-xs leading-5 text-ink/65">{item.description || 'No description provided yet.'}</p>}
 
@@ -300,7 +291,7 @@ export default function Marketplace() {
                       <button type="button" onClick={() => addToCart(item)} disabled={item.seller?.isDemoSeed || type === 'product' && item.stock < 1} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-accent px-2.5 py-2 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3">
                         <CartIcon width={14} height={14} /> Add
                       </button>
-                    ) : <button type="button" onClick={() => buyDirectly(item)} disabled={item.seller?.isDemoSeed || item.buyerPriceKobo == null} className="shrink-0 rounded-md bg-accent px-2.5 py-2 text-center text-[11px] font-semibold text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 sm:px-3">Book</button>}
+                    ) : <Link to={`/marketplace/${type}/${item._id}`} className="shrink-0 rounded-md bg-accent px-2.5 py-2 text-center text-[11px] font-semibold text-accent-ink sm:px-3">View options</Link>}
                   </div>
                 </div>
               </article>

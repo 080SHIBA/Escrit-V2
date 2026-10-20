@@ -13,6 +13,12 @@ const serviceSchema = new mongoose.Schema(
   {
     seller: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     escrowLinkId: { type: mongoose.Schema.Types.ObjectId, ref: 'Link', default: null },
+    paymentOptions: {
+      escrow: { type: Boolean, default: true },
+      direct: { type: Boolean, default: true },
+    },
+    overridesDefault: { type: Boolean, default: false },
+    fulfillmentOverridesDefault: { type: Boolean, default: false },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     images: { type: [String], default: [] },

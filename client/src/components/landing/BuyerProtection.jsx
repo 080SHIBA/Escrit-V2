@@ -1,9 +1,9 @@
 import { BadgeCheck, Banknote, CircleHelp, LockKeyhole, ShieldAlert } from 'lucide-react';
 
 const PROTECTIONS = [
-  { Icon: LockKeyhole, title: 'Your payment stays held', body: 'Funds are held in escrow while the seller completes the agreed transaction.' },
+  { Icon: LockKeyhole, title: 'Escrow when you choose it', body: 'For escrow purchases, funds are held while the seller completes the agreed transaction.' },
   { Icon: BadgeCheck, title: 'Know who you are paying', body: 'Seller identity checks and the transaction details are visible before payment.' },
-  { Icon: ShieldAlert, title: 'A dispute pauses release', body: 'Raise a dispute if there is a problem; the funds stay frozen while it is reviewed.' },
+  { Icon: ShieldAlert, title: 'A dispute pauses escrow release', body: 'For escrow purchases, raise a dispute if there is a problem; the funds stay frozen while it is reviewed.' },
   { Icon: Banknote, title: 'Clear Naira amounts', body: 'Review the price and payment amount before you confirm.' },
 ];
 
@@ -15,7 +15,7 @@ export default function BuyerProtection() {
           <div className="landing-section-heading">
             <p className="landing-overline">Buyer protection</p>
             <h2>Know where your money stands.</h2>
-            <p>Escrow keeps the payment connected to the agreed delivery and confirmation steps.</p>
+            <p>When you choose escrow, the payment is connected to the agreed delivery and confirmation steps.</p>
           </div>
           <ul className="landing-protection-list">
             {PROTECTIONS.map(({ Icon, title, body }) => (

@@ -1,3 +1,5 @@
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../shared/releaseConditions.js';
+
 const delay = () => new Promise((resolve) => window.setTimeout(resolve, 100));
 const PREFIX = 'escrit:onboarding:';
 const MOCK_LINKS = {
@@ -50,6 +52,7 @@ export const onboardingMockHandlers = {
         priceKobo: preview.amountKobo || 1250000,
         checkoutPriceKobo: preview.amountKobo || 1250000,
         fulfillmentType: 'product',
+        releaseWindowHours: DEFAULT_RELEASE_WINDOW_HOURS,
         refundable: false,
         active: preview.state === 'valid',
       },
@@ -90,9 +93,10 @@ export function createMockEscrowPreview(linkId, transactionId = '') {
     transactionId,
     title: mock.title,
     fulfillmentType: 'product',
+    releaseWindowHours: DEFAULT_RELEASE_WINDOW_HOURS,
     amountKobo: 1250000,
     from: 'Demo seller',
-    releaseRule: 'Funds are released according to the terms shown on the transaction page.',
+    releaseRule: releaseRuleText(DEFAULT_RELEASE_WINDOW_HOURS),
     fees: 'Shown before you pay.',
     termsSnapshot: 'The item will be delivered as agreed. Confirm completion before release.',
   };

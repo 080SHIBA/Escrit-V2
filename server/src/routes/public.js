@@ -20,14 +20,61 @@ import { generateReference } from '../utils/reference.js';
 import { env } from '../config/env.js';
 import { ensureCheckoutPrice } from '../services/pricing.js';
 import { Course } from '../models/Course.js';
+import { Product } from '../models/Product.js';
+import { Service } from '../models/Service.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS } from '../../../shared/releaseConditions.js';
 
 export const publicRouter = Router();
 publicRouter.use(publicLimiter);
 
 function linkTermsSnapshot(link) {
   return link.termsSnapshot || link.itemDescription || 'The seller will confirm delivery details with you before checkout.';
+}
+
+const PAYMENT_DEFAULTS = {
+  both: { escrow: true, direct: true },
+  escrow: { escrow: true, direct: false },
+  direct: { escrow: false, direct: true },
+};
+const LISTING_MODELS = { product: Product, course: Course, service: Service };
+
+async function paymentContextForLink(link, seller) {
+  const Model = LISTING_MODELS[link.listingType];
+  if (!Model || !link.listingId) return null;
+  const listing = await Model.findById(link.listingId);
+  if (!listing) return null;
+  const paymentDefault = seller?.transactionPreferences?.paymentDefault || 'both';
+  const paymentOptions = listing.overridesDefault
+    ? listing.paymentOptions
+    : PAYMENT_DEFAULTS[paymentDefault] || PAYMENT_DEFAULTS.both;
+  const fulfilmentDefault = seller?.transactionPreferences?.fulfilmentDefault
+    || seller?.onboarding?.fulfilmentDefault
+    || 'delivery';
+  const fulfilment = link.listingType === 'product'
+    ? listing.fulfillmentOverridesDefault
+      ? listing.fulfillmentMethod
+      : fulfilmentDefault === 'both' ? 'delivery-or-pickup' : fulfilmentDefault
+    : '';
+  return { listing, paymentOptions, fulfilment };
+}
+
+function checkoutTermsSnapshot(link, paymentContext, checkoutMode) {
+  const { paymentOptions, fulfilment } = paymentContext || {};
+  const choice = checkoutMode === 'direct'
+    ? 'Payment method: direct payment without escrow. Escrit cannot hold or recover this money, but buyers can still report problems.'
+    : 'Payment method: Escrit escrow. Payment is held until the buyer confirms completion or the default release window ends.';
+  const availability = paymentOptions?.escrow && paymentOptions?.direct
+    ? 'This listing offers both options; the buyer selected one at checkout.'
+    : paymentOptions?.escrow
+      ? 'This listing accepts escrow payment only.'
+      : paymentOptions?.direct
+        ? 'This listing accepts payment without escrow only.'
+        : '';
+  return [link.itemName, linkTermsSnapshot(link), availability, choice, fulfilment ? `Fulfilment: ${fulfilment}.` : '']
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 async function loadLink(req) {
@@ -47,7 +94,9 @@ async function loadTransaction(req) {
 publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
   const link = await loadLink(req);
   const checkoutPriceKobo = await ensureCheckoutPrice(link);
-  const seller = await User.findById(link.sellerId).select('displayName businessName fullName isDemoSeed');
+  const seller = await User.findById(link.sellerId).select('displayName businessName fullName isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
+  const paymentContext = await paymentContextForLink(link, seller);
+  const paymentOptions = paymentContext?.paymentOptions;
 
   res.json({
     link: {
@@ -59,8 +108,15 @@ publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
       priceKobo: link.priceKobo,
       checkoutPriceKobo,
       fulfillmentType: link.fulfillmentType,
+      releaseWindowHours: link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS,
       refundable: link.refundable,
       active: link.active,
+      paymentOptions: paymentOptions || (link.fulfillmentType === 'service'
+        ? { escrow: false, direct: true }
+        : { escrow: true, direct: false }),
+      paymentOptionLabel: paymentOptions
+        ? paymentOptions.escrow && paymentOptions.direct ? 'Escrow optional' : paymentOptions.escrow ? 'Escrow only' : 'No escrow'
+        : link.fulfillmentType === 'service' ? 'No escrow' : 'Escrow only',
     },
     seller: {
       id: String(seller._id),
@@ -73,6 +129,7 @@ publicRouter.get('/:linkId', asyncHandler(async (req, res) => {
 
 const checkoutSchema = Joi.object({
   phone: Joi.string().allow('').default(''),
+  checkoutMode: Joi.string().valid('escrow', 'direct'),
   termsAccepted: Joi.boolean().valid(true).required(),
 });
 
@@ -86,13 +143,17 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
   if (link.expiresAt && link.expiresAt <= new Date()) {
     throw new AppError(410, 'This payment link has expired');
   }
-    const checkoutMode = link.fulfillmentType === 'service' ? 'direct' : 'escrow';
-
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(401, 'Sign in to place an order');
   if (!buyer.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
-  const seller = await User.findById(link.sellerId).select('isDemoSeed');
+  const seller = await User.findById(link.sellerId);
   if (seller?.isDemoSeed) throw new AppError(409, 'Demo listings are for browsing only and cannot accept real payment.');
+  const paymentContext = await paymentContextForLink(link, seller);
+  const paymentOptions = paymentContext?.paymentOptions
+    || (link.fulfillmentType === 'service' ? { escrow: false, direct: true } : { escrow: true, direct: false });
+  const checkoutMode = req.body.checkoutMode
+    || (paymentOptions.escrow ? 'escrow' : 'direct');
+  if (!paymentOptions[checkoutMode]) throw new AppError(409, 'This payment option is not available for this listing.');
 
   const reference = generateReference('escrit');
   const checkoutTotalKobo = await ensureCheckoutPrice(link);
@@ -101,7 +162,7 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
     linkId: link._id,
     paymentProvider: await getPaymentProviderName(),
     paymentReference: reference,
-      checkoutMode,
+    checkoutMode,
     checkoutTotalKobo,
     buyerPriceKoboSnapshot: checkoutTotalKobo,
     sellerPayoutBaseKobo: link.checkoutBasePriceKobo ?? link.priceKobo,
@@ -109,7 +170,8 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
     buyerEmail: buyer.email,
     buyerPhone: req.body.phone || null,
     termsAcceptedAt: new Date(),
-    termsSnapshot: linkTermsSnapshot(link),
+    termsSnapshot: checkoutTermsSnapshot(link, paymentContext, checkoutMode),
+    releaseWindowHours: link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS,
   });
   recordFunnelEvent('terms_accepted', {
     userId: buyer._id,
@@ -154,6 +216,7 @@ publicRouter.get('/:linkId/t/:txId', requireAuth, asyncHandler(async (req, res) 
       priceKobo: link.priceKobo,
       checkoutPriceKobo,
       fulfillmentType: link.fulfillmentType,
+      releaseWindowHours: tx.releaseWindowHours ?? link.releaseWindowHours ?? DEFAULT_RELEASE_WINDOW_HOURS,
       refundable: link.refundable,
     },
     seller: {
@@ -196,6 +259,29 @@ publicRouter.post('/:linkId/t/:txId/dispute', requireAuth, validate(disputeSchem
   await assertBuyerOwnsTransaction(req, tx);
   const updated = await raiseDispute(tx, req.body.reason, { text: req.body.evidenceText, mediaUrl: req.body.evidenceUrl });
   res.json({ transaction: updated });
+}));
+
+const directComplaintSchema = Joi.object({
+  reason: Joi.string().trim().min(5).max(500).required(),
+});
+
+publicRouter.post('/:linkId/t/:txId/complaint', requireAuth, validate(directComplaintSchema), asyncHandler(async (req, res) => {
+  const tx = await loadTransaction(req);
+  await assertBuyerOwnsTransaction(req, tx);
+  if (![TX_STATUS.DIRECT_PAID, TX_STATUS.DIRECT_COMPLETED].includes(tx.status)) {
+    throw new AppError(409, 'Problems can be reported here after a direct payment is confirmed.');
+  }
+  if (tx.complaintLogged) throw new AppError(409, 'A problem report has already been submitted for this order.');
+  tx.complaintLogged = true;
+  tx.complaintReason = req.body.reason;
+  tx.disputeRaisedAt = new Date();
+  tx.evidence.push({
+    submittedBy: req.sellerId,
+    party: 'buyer',
+    text: req.body.reason,
+  });
+  await tx.save();
+  res.json({ transaction: tx });
 }));
 
 const evidenceSchema = Joi.object({

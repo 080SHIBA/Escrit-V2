@@ -61,6 +61,14 @@ const onboardingSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const transactionPreferencesSchema = new mongoose.Schema(
+  {
+    paymentDefault: { type: String, enum: ['both', 'escrow', 'direct'], default: 'both' },
+    fulfilmentDefault: { type: String, enum: ['delivery', 'pickup', 'both'], default: undefined },
+  },
+  { _id: false }
+);
+
 const escrowReturnSchema = new mongoose.Schema(
   {
     linkId: { type: String, required: true },
@@ -82,6 +90,7 @@ const userSchema = new mongoose.Schema(
       type: [{ type: String, enum: ['Buy', 'Sell', 'Escrow links'] }],
       default: [],
     },
+    transactionPreferences: { type: transactionPreferencesSchema, default: () => ({}) },
     onboarding: { type: onboardingSchema, default: () => ({}) },
     pendingEscrowReturn: { type: escrowReturnSchema, default: null },
     escrowRecipientPromptEligible: { type: Boolean, default: false },

@@ -18,8 +18,11 @@ export const DEFAULT_LISTING_FORM = Object.freeze({
   price: '',
   images: [],
   allowOffers: false,
+  paymentOptions: { escrow: true, direct: true },
+  overridesDefault: false,
   condition: 'new',
   fulfillment: 'delivery',
+  fulfillmentOverridesDefault: false,
   quantity: '1',
   deliveryTime: '',
   format: 'self-paced-videos',
@@ -52,7 +55,9 @@ export function validateListing(form, photos = []) {
   if (form.title.trim().length < 5) errors.title = 'Use at least 5 characters for the title.';
   if (form.title.trim().length > 80) errors.title = 'Keep the title to 80 characters or fewer.';
   if (!form.category) errors.category = 'Choose a category.';
-  if (form.description.trim().length < 20) errors.description = 'Add at least 20 characters to the description.';
+  if (form.paymentOptions && !form.paymentOptions.escrow && !form.paymentOptions.direct) {
+    errors.paymentOptions = 'Choose at least one payment option.';
+  }
   if (form.description.length > 1000) errors.description = 'Keep the description to 1,000 characters or fewer.';
   if (!/^\d+$/.test(String(form.price)) || Number(form.price) <= 0) errors.price = 'Enter a price above ₦0 using digits only.';
   if (form.type === 'product' && (!/^\d+$/.test(String(form.quantity)) || Number(form.quantity) < 1)) errors.quantity = 'Quantity must be at least 1.';
@@ -81,8 +86,7 @@ export function nextStrengthTip(form, photos = []) {
   const photoCount = photos.filter((photo) => photo.url).length;
   if (form.title.trim().length < 5) return 'Add a title of at least 5 characters.';
   if (!form.category) return 'Choose a category so buyers can find your listing.';
-  if (form.description.trim().length < 20) return 'Write at least 20 characters describing your listing.';
-  if (form.description.trim().length < 80) return 'Add more detail to reach 80 description characters.';
+  if (form.description.trim().length > 0 && form.description.trim().length < 80) return 'Add more detail to reach 80 description characters.';
   if (Number(form.price) <= 0) return 'Set a price in Naira.';
   if (form.type === 'service' && !form.deliveryTime.trim()) return 'Add an estimated service delivery time.';
   if (form.type === 'course' && !form.duration.trim()) return 'Add a course duration or lesson count.';

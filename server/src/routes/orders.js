@@ -42,6 +42,7 @@ function toOrder(transaction, role, counterparty) {
     disputed: transaction.status === TX_STATUS.DISPUTED,
     deliveredAt: transaction.deliveredAt || transaction.fulfillmentUpdatedAt || null,
     releaseDueAt: transaction.releaseDueAt || null,
+    releaseWindowHours: transaction.releaseWindowHours,
     linkId: String(link._id),
     status: transaction.status,
     payoutState: transaction.payoutState,
@@ -112,7 +113,7 @@ ordersRouter.post('/:id/deliver', asyncHandler(async (req, res) => {
   transaction.fulfillmentStatus = transaction.linkId.fulfillmentType === 'service' ? 'SERVICE_COMPLETE' : 'DELIVERED';
   transaction.fulfillmentUpdatedAt = deliveredAt;
   transaction.deliveredAt = deliveredAt;
-  transaction.releaseDueAt = deliveryReleaseTime(deliveredAt);
+  transaction.releaseDueAt = deliveryReleaseTime(deliveredAt, transaction.releaseWindowHours);
   await transaction.save();
   const buyer = transaction.buyerUserId
     ? await User.findById(transaction.buyerUserId).select('displayName businessName')

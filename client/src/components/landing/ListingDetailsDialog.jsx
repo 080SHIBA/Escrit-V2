@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { BadgeCheck, ShieldCheck, Star, X } from 'lucide-react';
+import { BadgeCheck, Star, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const money = new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 });
@@ -12,6 +12,7 @@ export default function ListingDetailsDialog({ listing, onClose, isAuthed }) {
   const identityVerified = Boolean(listing.sellerVerified);
   const sellerRating = Number(listing.sellerRatingAvg || listing.ratingAvg || 0);
   const sellerReviewCount = Number(listing.sellerReviewCount || listing.ratingCount || 0);
+  const paymentOptions = listing.paymentOptions || { escrow: true, direct: true };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -98,18 +99,18 @@ export default function ListingDetailsDialog({ listing, onClose, isAuthed }) {
         </div>
 
         <section className="landing-protection-box" aria-labelledby="landing-protection-title">
-          <h3 id="landing-protection-title"><ShieldCheck size={18} aria-hidden="true" /> Your buyer protection</h3>
-          <ul>
-            <li>You pay Escrit; the seller is paid after you confirm.</li>
-            <li>You have 72 hours after delivery to confirm or dispute.</li>
-            <li>Raising a dispute freezes the funds while it is reviewed.</li>
-          </ul>
+          <h3 id="landing-protection-title">{listing.paymentOptionLabel || 'Escrow optional'}</h3>
+          <p>{paymentOptions.escrow && paymentOptions.direct
+            ? 'Choose escrow or pay without escrow on the listing page.'
+            : paymentOptions.escrow
+              ? 'This listing accepts escrow payment only.'
+              : 'This listing accepts payment without escrow only. Escrit cannot hold or recover the money, but you can still report problems.'}</p>
         </section>
 
         <div className="landing-dialog-purchase">
           <p>₦{money.format(Number(listing.price) || 0)}</p>
           <Link to={isAuthed ? listingPath : signInPath} className="landing-button landing-button-primary">
-            Buy with escrow
+            View payment options
           </Link>
         </div>
       </div>

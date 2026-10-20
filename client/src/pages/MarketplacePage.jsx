@@ -129,7 +129,7 @@ export default function MarketplacePage() {
           <p className="eyebrow">ESCRIT MARKETPLACE</p>
           <h1 className="mt-2 font-display text-3xl sm:text-4xl">Marketplace</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">
-            Browse listings. Every purchase is held in escrow until you confirm.
+            Browse listings and check each listing for its available payment options. Escrow is optional.
           </p>
         </div>
         <Link

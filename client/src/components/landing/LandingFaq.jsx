@@ -6,7 +6,7 @@ const QUESTIONS = [
   },
   {
     question: 'When does the seller receive payment?',
-    answer: 'The payment is held while the seller completes the agreed delivery. After you confirm, the funds are released. If you do not confirm or dispute within 72 hours after delivery, the automatic release window applies.',
+    answer: 'For escrow purchases, payment is held while the seller completes the agreed delivery. After you confirm, funds are released. If you do not respond, the default release window applies. Listings may also offer payment without escrow.',
   },
   {
     question: 'What happens if something goes wrong?',

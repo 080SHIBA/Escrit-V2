@@ -46,7 +46,7 @@ export default function MarketplaceListing() {
     }
   }
 
-  async function buyDirectly() {
+  async function buyDirectly(checkoutMode) {
     if (status !== 'authed') {
       navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
       return;
@@ -54,7 +54,7 @@ export default function MarketplaceListing() {
     setDirectBuying(true);
     setError('');
     try {
-      const { authorizationUrl } = await api.directCheckout(type, id, { appointmentAt: appointmentAt || null });
+      const { authorizationUrl } = await api.directCheckout(type, id, { checkoutMode, appointmentAt: appointmentAt || null });
       window.location.assign(authorizationUrl);
     } catch (err) {
       setError(err.message || 'Direct checkout is unavailable.');
@@ -68,6 +68,7 @@ export default function MarketplaceListing() {
   if (!item) return <p className="py-10 text-sm text-ink/55">Loading listing…</p>;
 
   const price = item.buyerPriceKobo != null ? item.buyerPriceKobo / 100 : null;
+  const paymentOptions = item.paymentOptions || { escrow: true, direct: true };
   return (
     <article className="mx-auto max-w-6xl">
       <Link to={`/marketplace?type=${type}`} className="inline-flex items-center gap-1 text-sm text-ink/55 hover:text-ink"><ChevronRightIcon className="rotate-180" width={16} height={16} />Back to {type}s</Link>
@@ -87,13 +88,25 @@ export default function MarketplaceListing() {
 
         <aside className="h-fit border-y border-line py-6 lg:sticky lg:top-24">
           <p className="text-3xl font-semibold">{type === 'service' ? item.basePrice > 0 ? price == null ? 'Price unavailable' : `From ₦${Number(price).toLocaleString()}` : 'Get a quote' : price == null ? 'Price unavailable' : `₦${Number(price).toLocaleString()}`}</p>
+          <p className="mt-2 text-sm font-medium">{item.paymentOptionLabel || (paymentOptions.escrow && paymentOptions.direct ? 'Escrow optional' : paymentOptions.escrow ? 'Escrow only' : 'No escrow')}</p>
+          {paymentOptions.direct && <p className="mt-1 text-xs leading-5 text-ink/55">Without escrow, Escrit cannot hold or recover the money. You can still report problems.</p>}
           {item.seller?.isDemoSeed && <p className="mt-3 rounded-md border border-seal/30 bg-seal-soft/50 p-3 text-xs leading-5">Demo listing. Checkout is disabled; no real payment can be made.</p>}
           {type === 'service' && <label className="mt-4 block text-sm text-ink/65">Preferred appointment <span className="text-ink/40">(optional)</span><input type="datetime-local" value={appointmentAt} onChange={(event) => setAppointmentAt(event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>}
           {type !== 'service' ? (
             <button type="button" onClick={addToCart} disabled={adding || price == null || item.seller?.isDemoSeed || item.stock < 1} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 font-medium text-paper disabled:opacity-50">
               <CartIcon />{adding ? 'Adding…' : type === 'product' && item.stock < 1 ? 'Out of stock' : 'Add to cart'}
             </button>
-          ) : <button type="button" onClick={buyDirectly} disabled={directBuying || price == null || item.seller?.isDemoSeed} className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-ink px-4 py-3 text-center font-medium text-paper disabled:opacity-50">{directBuying ? 'Opening secure checkout…' : type === 'service' ? 'Book and pay directly' : 'Buy course directly'}</button>}
+          ) : null}
+          {paymentOptions.escrow && (
+            <button type="button" onClick={() => buyDirectly('escrow')} disabled={directBuying || price == null || item.seller?.isDemoSeed} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-line px-4 py-3 text-center font-medium text-ink disabled:opacity-50">
+              {directBuying ? 'Opening checkout…' : type === 'service' ? 'Book with escrow' : 'Buy with escrow'}
+            </button>
+          )}
+          {paymentOptions.direct && (
+            <button type="button" onClick={() => buyDirectly('direct')} disabled={directBuying || price == null || item.seller?.isDemoSeed} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-ink px-4 py-3 text-center font-medium text-paper disabled:opacity-50">
+              {directBuying ? 'Opening checkout…' : type === 'service' ? 'Book without escrow' : 'Pay without escrow'}
+            </button>
+          )}
           {kycRequired && <Link to={`/settings?next=${encodeURIComponent(window.location.pathname)}`} className="mt-3 inline-block text-sm underline underline-offset-4">Complete identity details to continue</Link>}
           {type === 'product' && <ProductOfferPanel product={item} />}
           {message && <p role="status" className="mt-3 text-sm text-released">{message} <Link to="/account/cart" className="underline">View cart</Link></p>}
@@ -104,7 +117,7 @@ export default function MarketplaceListing() {
             {item.seller?.bio && <p className="mt-2 text-sm text-ink/60">{item.seller.bio}</p>}
             <Link to={`/marketplace/seller/${item.seller?._id}`} className="mt-3 inline-block text-sm underline underline-offset-4">View seller storefront</Link>
           </div>
-          <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-ink/55">{type === 'service' ? 'Service bookings are paid directly after the charge is confirmed.' : 'Your payment is held in escrow until the agreed learning access or product delivery is confirmed.'}</p>
+          {paymentOptions.escrow && <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-ink/55">For escrow orders, payment is held until completion is confirmed or the default window ends.</p>}
         </aside>
       </div>
       <ReviewSection listingType={type} listingId={id} authStatus={status} />

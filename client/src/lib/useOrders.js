@@ -31,7 +31,10 @@ export function useOrderActions() {
     const optimistic = transitionOrder(order, action, role);
     if (action === 'deliver') {
       optimistic.deliveredAt = new Date().toISOString();
-      optimistic.releaseDueAt = deliveryReleaseTime(optimistic.deliveredAt).toISOString();
+      optimistic.releaseDueAt = deliveryReleaseTime(
+        optimistic.deliveredAt,
+        optimistic.releaseWindowHours,
+      ).toISOString();
     }
     if (action === 'dispute') optimistic.disputeReason = payload.reason;
 

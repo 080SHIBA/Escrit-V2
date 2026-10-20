@@ -63,6 +63,7 @@ export default function ListingCard({
       <div className="space-y-2.5 p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-xs font-medium text-ink/55">{listing.category}</span>
+          <span className="shrink-0 text-[10px] font-medium text-ink/55">{listing.paymentOptionLabel || 'Escrow optional'}</span>
         </div>
         <h2 className="min-h-11 font-display text-base leading-5">
           <button type="button" onClick={(event) => onOpen(listing, event)} className="line-clamp-2 text-left hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">

@@ -1,3 +1,5 @@
+import { apiUrl } from '../apiBase.js';
+
 const demo = import.meta.env?.VITE_AUTH_MOCKS === 'true';
 const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
 const verificationRequests = new Map();
@@ -71,7 +73,7 @@ export function verifyEmailToken(token) {
 async function request(url, body) {
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetch(apiUrl(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

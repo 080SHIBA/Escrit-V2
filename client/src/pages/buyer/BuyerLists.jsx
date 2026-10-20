@@ -27,18 +27,18 @@ export default function BuyerLists({ mode }) {
     load();
   }, [isCart]);
 
-  async function checkoutCart() {
+  async function checkoutCart(checkoutMode) {
     setError('');
     setCheckingOut(true);
     try {
-      const { authorizationUrl, transactionId } = await api.checkoutCart();
+      const { authorizationUrl, transactionId } = await api.checkoutCart({ checkoutMode });
       const firstItem = items?.[0];
       if (firstItem?.listing?.escrowLinkId) {
         localStorage.setItem(`escrit_last_order:${firstItem.listing.escrowLinkId}`, transactionId);
       }
       window.location.href = authorizationUrl;
     } catch (err) {
-      setError(err.message || 'Unable to start secure checkout.');
+      setError(err.message || 'Unable to start checkout.');
       setKycRequired(err.message.toLowerCase().includes('identity details'));
       setCheckingOut(false);
     }
@@ -112,8 +112,8 @@ export default function BuyerLists({ mode }) {
                   {isCart && entry.listingType === 'service' && (
                     <Link to={`/marketplace/service/${listing._id}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View service</Link>
                   )}
-                  {isCart && entry.listingType !== 'service' && listing.escrowLinkId && (
-                    <Link to={`/r/${listing.escrowLinkId}`} className="self-center rounded-lg bg-ink px-3 py-2 text-center text-xs font-medium text-paper">Buy with escrow</Link>
+                  {isCart && (
+                    <Link to={`/marketplace/${entry.listingType}/${listing._id}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View payment options</Link>
                   )}
                 </li>
               );
@@ -122,12 +122,18 @@ export default function BuyerLists({ mode }) {
           {isCart && (
             <aside className="h-fit border-y border-line py-5 lg:sticky lg:top-24">
               <p className="flex justify-between gap-4 border-t border-line pt-4 font-medium"><span>Total</span><span>₦{(quote.totalKobo / 100).toLocaleString()}</span></p>
-              <p className="mt-3 flex gap-2 rounded-lg bg-released-soft p-3 text-xs leading-5 text-released"><span aria-hidden="true">🔒</span><span>Your money is held in escrow. The seller is only paid after you confirm delivery, and you can raise a dispute if something is wrong.</span></p>
-              <p className="mt-3 text-xs leading-relaxed text-ink/55">Each product or course becomes its own escrow-protected order. Product delivery is handled by the seller; course access is released after payment is verified.</p>
+              <p className="mt-3 text-xs leading-relaxed text-ink/55">Each product or course becomes its own order. Choose one payment option for the cart; escrow orders hold payment until completion. Without escrow, Escrit cannot hold or recover the money, but you can still report problems.</p>
               {!quote.feeQuoteAvailable && <p className="mt-3 text-xs text-seal">The final total is being refreshed. Try again shortly.</p>}
-              <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable || items.some((entry) => entry.listingType === 'service')} onClick={checkoutCart} className="mt-5 w-full rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper disabled:opacity-50">
-                {checkingOut ? 'Preparing secure checkout…' : 'Buy with escrow'}
-              </button>
+              {items.every((entry) => entry.listing.paymentOptions?.escrow !== false) && (
+                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable || items.some((entry) => entry.listingType === 'service')} onClick={() => checkoutCart('escrow')} className="mt-5 min-h-11 w-full rounded-lg border border-line px-4 py-3 text-sm font-medium disabled:opacity-50">
+                  {checkingOut ? 'Preparing checkout…' : 'Checkout with escrow'}
+                </button>
+              )}
+              {items.every((entry) => entry.listing.paymentOptions?.direct !== false) && (
+                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable || items.some((entry) => entry.listingType === 'service')} onClick={() => checkoutCart('direct')} className="mt-3 min-h-11 w-full rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper disabled:opacity-50">
+                  {checkingOut ? 'Preparing checkout…' : 'Checkout without escrow'}
+                </button>
+              )}
             </aside>
           )}
         </div>

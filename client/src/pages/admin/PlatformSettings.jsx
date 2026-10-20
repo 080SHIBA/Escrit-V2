@@ -49,7 +49,6 @@ export default function PlatformSettings() {
       setPaymentProvider(settings.paymentProvider);
       setPaymentMode(settings.paymentMode || 'test');
       setSavedMode(settings.paymentMode || 'test');
-      window.dispatchEvent(new CustomEvent('escrit:payment-mode-changed', { detail: settings.paymentMode || 'test' }));
       setSaved(true);
     } catch (err) {
       setError(err.message || 'Unable to save platform settings.');

@@ -21,9 +21,10 @@ The web client is in the companion `client` repository.
    verifies the provider transaction ID, status, currency, and total
    before moving every order to **held**.
 5. Sellers mark delivery or service completion. Buyers can confirm early,
-   raise a dispute to freeze the funds, or let the 72-hour confirmation
-   window expire for automatic payout. Admin dispute resolutions record a
-   written reason.
+   raise a dispute to freeze the funds, or let the agreed review window
+   expire for automatic payout. Seller-created payment links can choose
+   24 hours, 3 days (the default), or 7 days. Admin dispute resolutions
+   record a written reason.
 
 Payouts and refunds use the selected provider. Seller payouts use the saved verified
 bank details, minus the configurable platform commission. Buyer-facing listing
@@ -145,8 +146,9 @@ roles and update the platform commission percentage.
 
 ## Fulfillment
 
-The 72-hour auto-release countdown starts when the seller marks delivery or
-service completion, not when payment is made. A buyer confirmation releases
-funds sooner; a dispute freezes the transaction until an admin resolution.
-The server checks due orders once per minute and retries failed payouts while
-the escrow remains held.
+The auto-release countdown starts when the seller marks delivery or service
+completion, not when payment is made. Seller-created payment links offer
+24-hour, 3-day, and 7-day review windows, with 3 days as the default. A buyer
+confirmation releases funds sooner; a dispute freezes the transaction until an
+admin resolution. The server checks due orders once per minute and retries
+failed payouts while the escrow remains held.

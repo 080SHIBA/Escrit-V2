@@ -86,10 +86,24 @@ async function settleDirectPurchase(tx) {
   if (tx.status !== TX_STATUS.CREATED) return tx;
   tx.paidAt = new Date();
   const link = await Link.findById(tx.linkId);
-  if (!link || !['course', 'service'].includes(link.fulfillmentType)) {
-    throw new AppError(409, 'Direct checkout is only available for courses and services');
+  if (!link) throw new AppError(404, 'Listing checkout not found');
+  if (link.listingType === 'product' && link.listingId && !tx.directInventoryReserved) {
+    const product = await Product.findOneAndUpdate(
+      { _id: link.listingId, stock: { $gte: tx.checkoutQuantity || 1 } },
+      { $inc: { stock: -(tx.checkoutQuantity || 1) } },
+      { new: true }
+    );
+    if (!product) {
+      tx.status = TX_STATUS.DISPUTED;
+      tx.disputeReason = 'The item sold out during checkout. The payment requires review.';
+      tx.disputeRaisedAt = new Date();
+      await tx.save();
+      return tx;
+    }
+    tx.directInventoryReserved = true;
+    await tx.save();
   }
-  await payOutToSeller(tx, `Escrit: direct ${link.fulfillmentType} purchase`, [TX_STATUS.CREATED]);
+  await payOutToSeller(tx, `Escrit: direct ${link.listingType} purchase`, [TX_STATUS.CREATED]);
   tx.status = TX_STATUS.DIRECT_PAID;
   await tx.save();
   return tx;
