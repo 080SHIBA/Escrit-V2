@@ -108,6 +108,7 @@ export default function Layout({ children }) {
 
   const isHome = location.pathname === '/';
   const isDashboard = location.pathname === '/dashboard';
+  const isListingDetail = location.pathname.startsWith('/listing/');
   const isLoginPage = location.pathname === '/login';
   const isOnboarding = location.pathname === '/onboarding';
   const isAuthRefresh = location.pathname === '/sign-in' || location.pathname === '/get-started' || isOnboarding;
@@ -510,7 +511,9 @@ export default function Layout({ children }) {
             ? 'max-w-none px-0 py-0 mx-0'
             : isHome
               ? ''
-              : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : 'max-w-2xl'}`
+              : isListingDetail
+                ? 'max-w-7xl px-0 py-8 mx-auto'
+                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : 'max-w-2xl'}`
         } ${isAuthed && !isBuyerSide && !isOnboarding ? 'pb-24 md:pb-8' : ''}`}
       >
         {children}
