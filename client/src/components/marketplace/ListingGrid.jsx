@@ -11,7 +11,6 @@ export default function ListingGrid({
   isOwnListing,
   savedIds,
   cartIds,
-  onOpen,
   onAddToCart,
   onToggleSaved,
 }) {
@@ -56,7 +55,6 @@ export default function ListingGrid({
               isOwn={isOwnListing(listing)}
               isSaved={savedIds.has(listing.id)}
               inCart={cartIds.has(listing.id)}
-              onOpen={onOpen}
               onAddToCart={onAddToCart}
               onToggleSaved={onToggleSaved}
             />

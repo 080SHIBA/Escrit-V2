@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import FilterChips from '../components/marketplace/FilterChips.jsx';
 import ListingGrid from '../components/marketplace/ListingGrid.jsx';
-import ListingModal from '../components/marketplace/ListingModal.jsx';
 import SearchBar from '../components/marketplace/SearchBar.jsx';
 import TypeSwitch from '../components/marketplace/TypeSwitch.jsx';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { filterListings, MARKETPLACE_CATEGORIES, sortListings } from '../lib/marketplaceState.js';
 import { usePageTitle } from '../lib/usePageTitle.js';
+import { getDefaultPaymentOption } from '../lib/listingDetailState.js';
 import { useCart } from '../hooks/useCart.js';
 import { useListings } from '../hooks/useListings.js';
 import { useSaved } from '../hooks/useSaved.js';
@@ -30,11 +30,9 @@ export default function MarketplacePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = readFilters(searchParams);
   const [queryInput, setQueryInput] = useState(filters.query);
-  const [selectedListing, setSelectedListing] = useState(null);
   const [toast, setToast] = useState('');
-  const returnFocusRef = useRef(null);
   const { seller } = useAuthContext();
-  const { listings, loading, loadingMore, error, hasMore, retry, loadMore, updateListing } = useListings();
+  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings();
   const { cartIds, addToCart } = useCart();
   const { savedIds, toggleSaved } = useSaved();
   const ownSellerId = seller?._id || seller?.id || seller?.sellerId || '';
@@ -63,13 +61,6 @@ export default function MarketplacePage() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  useEffect(() => {
-    if (!selectedListing && returnFocusRef.current) {
-      returnFocusRef.current.focus();
-      returnFocusRef.current = null;
-    }
-  }, [selectedListing]);
-
   function updateFilter(name, value) {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -79,11 +70,6 @@ export default function MarketplacePage() {
     }, { replace: true });
   }
 
-  function openListing(listing, event) {
-    returnFocusRef.current = event.currentTarget;
-    setSelectedListing(listing);
-  }
-
   function isOwnListing(listing) {
     return Boolean(ownSellerId && listing.sellerId === ownSellerId);
   }
@@ -91,7 +77,11 @@ export default function MarketplacePage() {
   async function handleAddToCart(listing) {
     if (isOwnListing(listing)) return;
     try {
-      await addToCart(listing);
+      await addToCart(listing, {
+        paymentOption: getDefaultPaymentOption(listing.paymentOptions),
+        fulfilment: listing.type === 'product' ? listing.fulfillmentMethod || '' : '',
+        quantity: 1,
+      });
       setToast(`${listing.title} added to cart.`);
     } catch {
       setToast('We couldn’t add this listing to your cart. Please try again.');
@@ -155,7 +145,7 @@ export default function MarketplacePage() {
         <p aria-live="polite" aria-atomic="true">
           {loading ? 'Loading listings…' : `${visibleListings.length} ${visibleListings.length === 1 ? 'listing' : 'listings'}${hasMore ? ' shown' : ''}`}
         </p>
-        <span className="hidden text-xs text-ink/45 sm:inline">Protected by Escrit escrow</span>
+        <span className="hidden text-xs text-ink/45 sm:inline">Payment options vary by listing</span>
       </div>
 
       <ListingGrid
@@ -169,28 +159,11 @@ export default function MarketplacePage() {
         isOwnListing={isOwnListing}
         savedIds={savedIds}
         cartIds={cartIds}
-        onOpen={openListing}
         onAddToCart={handleAddToCart}
         onToggleSaved={handleToggleSaved}
       />
 
       {toast && <div role="status" aria-live="polite" className="fixed bottom-5 right-5 z-[70] max-w-sm rounded-xl border border-line bg-paper px-4 py-3 text-sm text-ink shadow-card-lg">{toast}</div>}
-      {selectedListing && (
-        <ListingModal
-          listing={selectedListing}
-          isOwn={isOwnListing(selectedListing)}
-          isSaved={savedIds.has(selectedListing.id)}
-          inCart={cartIds.has(selectedListing.id)}
-          sellerId={ownSellerId}
-          onClose={() => setSelectedListing(null)}
-          onAddToCart={handleAddToCart}
-          onToggleSaved={handleToggleSaved}
-          onRatingUpdated={(id, updates) => {
-            updateListing(id, updates);
-            setSelectedListing((current) => current?.id === id ? { ...current, ...updates } : current);
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -243,20 +243,37 @@ export const api = {
       const suffix = query.toString();
       return request(`/listings${suffix ? `?${suffix}` : ''}`);
     })(),
+  getListingDetail: (id) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.getListing(id)
+    : request(`/listings/${encodeURIComponent(id)}`),
+  getListingDetailReviews: (id) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.getListingReviews(id)
+    : request(`/listings/${encodeURIComponent(id)}/reviews`),
+  getRelatedListings: (id) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.getRelatedListings(id)
+    : request(`/listings/${encodeURIComponent(id)}/related`),
+  reportListing: (id, reason, sellerId) => request(`/marketplace/seller/${encodeURIComponent(sellerId)}/report`, {
+    method: 'POST',
+    body: { reason: `Listing ${id}: ${reason}` },
+    auth: true,
+  }),
   getMarketplaceCart: () => marketplaceMocksEnabled
     ? marketplaceMockHandlers.getCart()
-    : request('/cart/items', { auth: true }),
-  addMarketplaceCartItem: async (listing) => {
+    : request('/marketplace/me/cart', { auth: true }).then(({ items = [], ...rest }) => ({
+      ...rest,
+      items: items.map((entry) => ({ id: entry.listing?._id, type: entry.listingType })),
+    })),
+  addMarketplaceCartItem: async (listing, options = {}) => {
     const result = marketplaceMocksEnabled
-      ? await marketplaceMockHandlers.addCartItem({ type: listing.type, listingId: listing.id })
-      : await request('/cart/items', { method: 'POST', body: { listingId: listing.id, type: listing.type }, auth: true });
+      ? await marketplaceMockHandlers.addCartItem({ type: listing.type, listingId: listing.id, ...options })
+      : await request('/marketplace/me/cart', { method: 'POST', body: { listingId: listing.id, listingType: listing.type, ...options }, auth: true });
     notifyCartChanged();
     return result;
   },
-  removeMarketplaceCartItem: async (id) => {
+  removeMarketplaceCartItem: async (id, type) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.removeCartItem(id)
-      : await request(`/cart/items/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true });
+      : await request(`/marketplace/me/cart/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true });
     notifyCartChanged();
     return result;
   },
@@ -326,10 +343,10 @@ export const api = {
   spendPlatformCredits: (payload) => request('/marketplace/me/credits/spend', { method: 'POST', body: payload, auth: true }),
   getMyListings: () => listingMocksEnabled ? listingMockHandlers.getMyListings() : request('/marketplace/me/listings', { auth: true }),
   setMyListingActive: (type, id, active) => request(`/marketplace/me/listings/${type}/${id}`, { method: 'PATCH', body: { active }, auth: true }),
-  addCartItem: async (listingType, listingId) => {
+  addCartItem: async (listingType, listingId, options = {}) => {
     const result = marketplaceMocksEnabled
-      ? await marketplaceMockHandlers.addCartItem({ type: listingType, listingId })
-      : await request('/marketplace/me/cart', { method: 'POST', body: { listingType, listingId }, auth: true });
+      ? await marketplaceMockHandlers.addCartItem({ type: listingType, listingId, ...options })
+      : await request('/marketplace/me/cart', { method: 'POST', body: { listingType, listingId, ...options }, auth: true });
     notifyCartChanged();
     return result;
   },

@@ -14,11 +14,11 @@ export function useCart() {
     return () => { active = false; };
   }, []);
 
-  const addToCart = useCallback(async (listing) => {
+  const addToCart = useCallback(async (listing, options = {}) => {
     const wasInCart = cartIds.has(listing.id);
     setCartIds((current) => new Set(current).add(listing.id));
     try {
-      await api.addMarketplaceCartItem(listing);
+      await api.addMarketplaceCartItem(listing, options);
     } catch (error) {
       if (!wasInCart) setCartIds((current) => {
         const updated = new Set(current);
@@ -37,7 +37,7 @@ export function useCart() {
       return updated;
     });
     try {
-      await api.removeMarketplaceCartItem(listing.id);
+      await api.removeMarketplaceCartItem(listing.id, listing.type);
     } catch (error) {
       if (wasInCart) setCartIds((current) => new Set(current).add(listing.id));
       throw error;

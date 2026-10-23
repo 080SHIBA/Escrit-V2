@@ -102,7 +102,7 @@ function ListingResult({ listing }) {
   const price = listing.type === 'service' && !listing.basePrice
     ? 'Get a quote'
     : listing.buyerPriceKobo != null ? `₦${(listing.buyerPriceKobo / 100).toLocaleString()}` : 'Price unavailable';
-  return <Link to={`/marketplace/${listing.type}/${listing._id}`} className="flex min-w-0 items-center gap-3 rounded-md border border-line bg-paper p-3 transition-colors hover:border-forest-700/50">
+  return <Link to={`/listing/${encodeURIComponent(listing.id || listing._id)}`} className="flex min-w-0 items-center gap-3 rounded-md border border-line bg-paper p-3 transition-colors hover:border-forest-700/50">
     <img src={listing.images?.[0] || '/logo-icon.png'} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
     <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{listing.title}</span><span className="mt-1 block text-xs text-ink/55">{price}</span></span>
   </Link>;

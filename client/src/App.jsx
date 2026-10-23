@@ -25,6 +25,7 @@ import PublicLinkPage from './pages/buyer/PublicLinkPage.jsx';
 import Result from './pages/buyer/Result.jsx';
 import BuyerLists from './pages/buyer/BuyerLists.jsx';
 import MarketplaceListing from './pages/MarketplaceListing.jsx';
+import ListingDetailPage from './pages/ListingDetailPage.jsx';
 import SellerStorefront from './pages/SellerStorefront.jsx';
 import BuyerOrders from './pages/buyer/BuyerOrders.jsx';
 import ServiceOffers from './pages/buyer/ServiceOffers.jsx';
@@ -68,6 +69,7 @@ export default function App() {
         {/* Public marketing page */}
         <Route path="/" element={<HomeRoute />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/listing/:id" element={<ListingDetailPage />} />
         <Route path="/marketplace/seller/:sellerId" element={<SellerStorefront />} />
         <Route path="/marketplace/:type/:id" element={<MarketplaceListing />} />
         <Route path="/marketplace/new/:type" element={<RequireAuth><CreateMarketplaceListing /></RequireAuth>} />

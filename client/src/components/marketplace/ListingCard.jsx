@@ -8,46 +8,25 @@ export default function ListingCard({
   isOwn,
   isSaved,
   inCart,
-  onOpen,
   onAddToCart,
   onToggleSaved,
 }) {
   const [imageFailed, setImageFailed] = useState(!listing.coverUrl);
   const typeName = listing.type === 'product' ? 'Product' : listing.type === 'service' ? 'Service' : 'Course';
 
-  function open(event) {
-    if (event.target.closest('button, a')) return;
-    onOpen(listing, event);
-  }
-
   return (
     <article
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(event) => {
-        if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
-          event.preventDefault();
-          onOpen(listing, event);
-        }
-      }}
-      className="group min-w-0 cursor-pointer overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-[3px] hover:border-accent hover:shadow-card-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none"
+      className="group min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-[3px] hover:border-accent hover:shadow-card-md motion-reduce:transition-none"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-forest-50 dark:bg-forest-900">
-        {!imageFailed && (
-          <img
-            src={listing.coverUrl}
-            alt=""
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
-          />
-        )}
-        {imageFailed && (
-          <div aria-hidden="true" className="flex h-full items-center justify-center bg-accent/10 text-5xl font-semibold text-accent">
-            {listing.title.trim().charAt(0).toLocaleUpperCase()}
-          </div>
-        )}
-        <span className="absolute left-3 top-3 rounded-full border border-line/70 bg-paper/90 px-2.5 py-1 text-xs font-medium text-ink">
+        <Link to={`/listing/${encodeURIComponent(listing.id)}`} aria-label={`View ${listing.title}`} className="absolute inset-0 block focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
+          {!imageFailed ? (
+            <img src={listing.coverUrl} alt={listing.title} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none" />
+          ) : (
+            <span aria-hidden="true" className="flex h-full items-center justify-center bg-accent/10 text-5xl font-semibold text-accent">{listing.title.trim().charAt(0).toLocaleUpperCase()}</span>
+          )}
+        </Link>
+        <span className="pointer-events-none absolute left-3 top-3 rounded-full border border-line/70 bg-paper/90 px-2.5 py-1 text-xs font-medium text-ink">
           {typeName}
         </span>
         <button
@@ -63,12 +42,12 @@ export default function ListingCard({
       <div className="space-y-2.5 p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-xs font-medium text-ink/55">{listing.category}</span>
-          <span className="shrink-0 text-[10px] font-medium text-ink/55">{listing.paymentOptionLabel || 'Escrow optional'}</span>
+          <span className="shrink-0 text-[10px] font-medium text-ink/55">{listing.paymentOptionLabel || 'Payment options vary'}</span>
         </div>
         <h2 className="min-h-11 font-display text-base leading-5">
-          <button type="button" onClick={(event) => onOpen(listing, event)} className="line-clamp-2 text-left hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
+          <Link to={`/listing/${encodeURIComponent(listing.id)}`} className="line-clamp-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
             {listing.title}
-          </button>
+          </Link>
         </h2>
         <RatingStars ratingAvg={listing.ratingAvg} ratingCount={listing.ratingCount} />
         <div className="flex min-h-5 items-center gap-1.5 text-xs text-ink/65">

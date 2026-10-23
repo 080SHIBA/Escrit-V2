@@ -317,7 +317,7 @@ export default function SellerStorefront() {
                   const terms = listingTerms(item);
                   return (
                     <article key={`${item.listingType}:${item._id}`} className="overflow-hidden rounded-xl border border-line bg-paper">
-                      <Link to={`/marketplace/${item.listingType}/${item._id}`} className="block">
+                      <Link to={`/listing/${encodeURIComponent(item._id)}`} className="block">
                         {item.images?.[0] ? <img src={item.images[0]} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover" /> : <div className="grid aspect-[4/3] place-items-center bg-paper-2 text-3xl text-ink/30">{sellerName(storefrontSeller).charAt(0)}</div>}
                         <div className="p-3">
                           <p className="text-xs uppercase text-ink/45">{item.listingType}</p>

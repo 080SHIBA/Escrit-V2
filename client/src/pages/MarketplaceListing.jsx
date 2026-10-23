@@ -68,7 +68,7 @@ export default function MarketplaceListing() {
   if (!item) return <p className="py-10 text-sm text-ink/55">Loading listing…</p>;
 
   const price = item.buyerPriceKobo != null ? item.buyerPriceKobo / 100 : null;
-  const paymentOptions = item.paymentOptions || { escrow: true, direct: true };
+  const paymentOptions = item.paymentOptions || { escrow: false, direct: true };
   return (
     <article className="mx-auto max-w-6xl">
       <Link to={`/marketplace?type=${type}`} className="inline-flex items-center gap-1 text-sm text-ink/55 hover:text-ink"><ChevronRightIcon className="rotate-180" width={16} height={16} />Back to {type}s</Link>

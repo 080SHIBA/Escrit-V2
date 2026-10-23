@@ -27,6 +27,8 @@ const cartItemSchema = new mongoose.Schema(
     listingType: { type: String, enum: ['product', 'course', 'service'], required: true },
     listingId: { type: mongoose.Schema.Types.ObjectId, required: true },
     quantity: { type: Number, min: 1, default: 1 },
+    paymentOption: { type: String, enum: ['escrow', 'direct'], default: null },
+    fulfilment: { type: String, enum: ['delivery', 'pickup', 'delivery-or-pickup', 'digital-download'], default: '' },
   },
   { _id: false }
 );

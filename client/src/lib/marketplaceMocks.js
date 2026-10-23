@@ -1,4 +1,5 @@
 import { filterListings, sortListings } from './marketplaceState.js';
+import { getRatingDistribution } from './listingDetailState.js';
 
 const delay = () => new Promise((resolve) => window.setTimeout(resolve, 100));
 /**
@@ -47,7 +48,16 @@ function legacyEntries(keys, quantities = new Map()) {
   return [...keys].map((key) => {
     const [listingType, id] = key.split(':');
     const listing = listings.find((entry) => entry.id === id);
-    return listing ? { listingType, listing: legacyListing(listing), quantity: quantities.get(key) || 1 } : null;
+    const cartEntry = quantities.get(key);
+    return listing ? {
+      listingType,
+      listing: {
+        ...legacyListing(listing),
+        fulfilment: cartEntry?.fulfilment || '',
+        paymentOption: cartEntry?.paymentOption || '',
+      },
+      quantity: cartEntry?.quantity || 1,
+    } : null;
   }).filter(Boolean);
 }
 
@@ -68,20 +78,80 @@ export const marketplaceMockHandlers = {
     const filtered = sortListings(filterListings(listings, params), params.sort || 'newest');
     const start = Math.max(0, Number(params.cursor || 0));
     const limit = Math.min(100, Math.max(1, Number(params.limit) || 6));
-    const items = filtered.slice(start, start + limit).map(cloneListing);
+    const items = filtered.slice(start, start + limit).map((listing) => {
+      const detail = listingDetails[listing.id] || {};
+      const offeredMethods = detail.deliveryOptions?.map((option) => option.method) || [];
+      return {
+        ...cloneListing(listing),
+        paymentOptions: detail.paymentOptions || { escrow: false, direct: true },
+        fulfillmentMethod: detail.fulfillmentMethod
+          || (offeredMethods.includes('pickup') && !offeredMethods.includes('delivery') ? 'pickup' : 'delivery'),
+      };
+    });
     const nextCursor = start + items.length < filtered.length ? String(start + items.length) : null;
     return { items, nextCursor };
+  },
+  async getListing(id) {
+    await delay();
+    const listing = listings.find((entry) => entry.id === id);
+    if (!listing) throw new Error('LISTING_NOT_FOUND');
+    const detail = listingDetails[listing.id] || {};
+    return {
+      ...cloneListing(listing),
+      ...detail,
+      id: listing.id,
+      type: listing.type,
+      active: detail.active !== false,
+      gallery: detail.gallery || (listing.coverUrl ? [listing.coverUrl] : []),
+      paymentOptions: detail.paymentOptions || { escrow: false, direct: true },
+      seller: {
+        id: listing.sellerId,
+        displayName: listing.sellerName,
+        avatarUrl: detail.sellerAvatarUrl || '',
+        isVerified: listing.sellerVerified,
+        liveListingCount: 3,
+        ratingAvg: listing.sellerRatingAvg || listing.ratingAvg,
+        ratingCount: listing.sellerReviewCount || listing.ratingCount,
+        bio: detail.sellerBio || 'Independent seller on Escrit.',
+      },
+    };
+  },
+  async getListingReviews(id) {
+    await delay();
+    if (!listings.some((entry) => entry.id === id)) throw new Error('LISTING_NOT_FOUND');
+    const listingReviews = reviews.get(id) || seededReviews[id] || [];
+    return { reviews: listingReviews.slice(0, 50), ratingDistribution: getRatingDistribution(listingReviews) };
+  },
+  async getRelatedListings(id) {
+    await delay();
+    const listing = listings.find((entry) => entry.id === id);
+    if (!listing) throw new Error('LISTING_NOT_FOUND');
+    return {
+      items: listings
+        .filter((entry) => entry.id !== id && (entry.category === listing.category || entry.sellerId === listing.sellerId))
+        .slice(0, 4)
+        .map(cloneListing),
+      sellerListings: listings
+        .filter((entry) => entry.id !== id && entry.sellerId === listing.sellerId)
+        .slice(0, 3)
+        .map(cloneListing),
+    };
   },
   async getCart() {
     await delay();
     return { items: [...cart.keys()].map((key) => ({ id: key.split(':')[1], type: key.split(':')[0] })) };
   },
-  async addCartItem({ listingId, type }) {
+  async addCartItem({ listingId, type, quantity, fulfilment, paymentOption }) {
     await delay();
     const listing = listings.find((entry) => entry.id === listingId && entry.type === type);
     if (!listing) throw new Error('This listing is no longer available.');
     const key = listingKey(type, listingId);
-    cart.set(key, (cart.get(key) || 0) + 1);
+    const previous = cart.get(key) || { quantity: 0 };
+    cart.set(key, {
+      quantity: quantity == null ? previous.quantity + 1 : Math.max(1, Math.min(Number(quantity) || 1, 10)),
+      fulfilment: fulfilment || previous.fulfilment || '',
+      paymentOption: paymentOption || previous.paymentOption || '',
+    });
     return cartResult();
   },
   async removeCartItem(id) {
@@ -115,9 +185,15 @@ export const marketplaceMockHandlers = {
     if (!listing?.ratingEligible || sellerId === listing.sellerId) {
       throw new Error('Only a buyer with a released escrow order can review this listing.');
     }
-    const listingReviews = reviews.get(id) || [];
-    if (listingReviews.length) throw new Error('You have already reviewed this listing.');
-    listingReviews.push({ rating: payload.rating, comment: payload.comment || '' });
+    if (reviews.has(id)) throw new Error('You have already reviewed this listing.');
+    const listingReviews = [...(seededReviews[id] || []), {
+      id: `${id}-review-new`,
+      rating: payload.rating,
+      comment: payload.comment || '',
+      buyerName: 'Verified buyer',
+      completedOrder: true,
+      createdAt: new Date().toISOString(),
+    }];
     reviews.set(id, listingReviews);
     listing.ratingCount += 1;
     listing.ratingAvg = Number((((listing.ratingAvg * (listing.ratingCount - 1)) + payload.rating) / listing.ratingCount).toFixed(1));
@@ -128,7 +204,46 @@ export const marketplaceMockHandlers = {
   legacySaved: savedResult,
   async setQuantity(type, id, quantity) {
     const key = listingKey(type, id);
-    if (cart.has(key)) cart.set(key, Math.max(1, Number(quantity) || 1));
+    if (cart.has(key)) cart.set(key, { ...cart.get(key), quantity: Math.max(1, Number(quantity) || 1) });
     return cartResult();
   },
 };
+
+const gallery = (coverUrl, ...images) => [coverUrl, ...images].filter(Boolean).slice(0, 4);
+const listingDetails = {
+  'mock-listing-01': { stock: 5, condition: 'new', fulfillmentMethod: 'delivery-or-pickup', deliveryOptions: [{ method: 'delivery' }, { method: 'pickup' }], area: 'Lagos', paymentOptions: { escrow: true, direct: true }, highlights: ['Handwoven from locally sourced raffia', 'Roomy interior with reinforced handles'] },
+  'mock-listing-02': { stock: 9, condition: 'new', fulfillmentMethod: 'delivery', deliveryOptions: [{ method: 'delivery' }], area: 'Abuja', paymentOptions: { escrow: true, direct: false }, highlights: ['Wireless listening with noise isolation', 'Includes charging cable and carry case'] },
+  'mock-listing-03': { stock: 3, condition: 'new', fulfillmentMethod: 'pickup', deliveryOptions: [{ method: 'pickup' }], area: 'Port Harcourt', paymentOptions: { escrow: false, direct: true }, highlights: ['Hand-finished ceramic base', 'Warm ambient light'] },
+  'mock-listing-04': { stock: 10, condition: 'new', fulfillmentMethod: 'delivery', deliveryOptions: [{ method: 'delivery' }], area: 'Lagos', paymentOptions: { escrow: true, direct: true }, highlights: ['Small-batch skincare essentials'] },
+  'mock-listing-05': { stock: 6, condition: 'new', fulfillmentMethod: 'pickup', deliveryOptions: [{ method: 'pickup' }], area: 'Ibadan', paymentOptions: { escrow: true, direct: true }, highlights: ['Made in small batches'] },
+  'mock-listing-06': { paymentOptions: { escrow: true, direct: true }, accessMethod: 'Lifetime access', format: 'Self-paced videos', level: 'Beginner', duration: '6 modules', highlights: ['Set up your storefront', 'Add products and take orders', 'Plan a launch'], curriculum: [{ title: 'Plan your store' }, { title: 'Build your storefront' }, { title: 'Launch and learn' }] },
+  'mock-listing-07': { paymentOptions: { escrow: true, direct: false }, accessMethod: 'Online course access', format: 'Self-paced videos', level: 'Beginner', duration: '4 lessons', highlights: ['Use natural light', 'Style products for a clear shot'] },
+  'mock-listing-08': { paymentOptions: { escrow: false, direct: true }, accessMethod: 'Digital download', format: 'PDF guide', level: 'All levels', duration: '12 recipes', highlights: ['Plan a week of meals', 'Cook balanced Nigerian staples'] },
+  'mock-listing-09': { paymentOptions: { escrow: true, direct: true }, deliveryTime: '1-2 weeks', coordination: 'Remote', scheduling: 'Timing agreed in Escrit chat', highlights: ['Brand discovery session', 'Logo and colour direction', 'Starter brand guide'], included: ['Discovery call', 'Primary logo', 'Colour palette'], howItWorks: ['Share your brief', 'Review the first concepts', 'Approve the final files'] },
+  'mock-listing-10': { paymentOptions: { escrow: true, direct: false }, deliveryTime: '2-3 weeks', coordination: 'Remote', scheduling: 'Timing agreed in Escrit chat', highlights: ['Store setup and configuration', 'Mobile-ready theme'], included: ['Store setup', 'Product upload guidance'], howItWorks: ['Share your requirements', 'Review the store draft', 'Receive the completed setup'] },
+  'mock-listing-11': { paymentOptions: { escrow: false, direct: true }, deliveryTime: '60 minutes', coordination: 'Remote', scheduling: 'Timing agreed in Escrit chat', highlights: ['One-to-one coaching session'], included: ['60-minute video call'], howItWorks: ['Message the seller', 'Agree a time in chat', 'Meet for your session'] },
+};
+
+const seededReviews = Object.fromEntries(listings.filter((listing) => listing.ratingCount).map((listing) => [
+  listing.id,
+  Array.from({ length: listing.ratingCount }, (_, index) => ({
+    id: `${listing.id}-review-${index + 1}`,
+    rating: Math.max(3, Math.min(5, Math.round(listing.ratingAvg || 5) + (index % 2 ? 0 : -1))),
+    comment: ['Clear communication and just as described.', 'A smooth experience from start to finish.', 'Good quality and helpful seller.'][index % 3],
+    buyerName: ['A. Buyer', 'K. Reader', 'N. Customer'][index % 3],
+    completedOrder: true,
+    createdAt: new Date(Date.UTC(2026, 8, 10 - index)).toISOString(),
+  })),
+]));
+
+for (const listing of listings) {
+  const extra = listingDetails[listing.id] || {};
+  const cover = listing.coverUrl;
+  extra.gallery = extra.gallery || gallery(
+    cover,
+    `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80`,
+    `https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80`,
+    `https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&q=80`,
+  );
+  listingDetails[listing.id] = extra;
+}

@@ -98,6 +98,8 @@ export default function BuyerLists({ mode }) {
                     <h2 className="mt-1 truncate font-medium">{listing.title}</h2>
                     <Link to={`/marketplace/seller/${listing.seller?._id}`} className="mt-1 inline-block text-sm text-ink/55 hover:text-accent hover:underline">{listing.seller?.displayName || listing.seller?.businessName || 'Escrit seller'}</Link>
                     <p className="mt-2 font-semibold">₦{(Number(price || 0) * (isCart ? entry.quantity : 1)).toLocaleString()}</p>
+                    {isCart && listing.paymentOption && <p className="mt-1 text-xs text-ink/55">Payment: {listing.paymentOption === 'escrow' ? 'Use Escrit escrow' : 'Pay without escrow'}</p>}
+                    {isCart && listing.fulfilment && <p className="mt-1 text-xs capitalize text-ink/55">Fulfilment: {listing.fulfilment.replaceAll('-', ' ')}</p>}
                     {isCart && entry.listingType === 'product' && listing.refundable && <p className="mt-1 max-w-xl text-xs leading-5 text-ink/55">Missed pickup refund: 95% of the amount paid is returned; 5% is retained. This applies if the seller records a no-show.</p>}
                     {isCart && entry.listingType === 'course' && listing.refundable && <p className="mt-1 max-w-xl text-xs leading-5 text-ink/55">Refund conditions: {listing.refundConditions || 'See the course listing.'}</p>}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -110,10 +112,10 @@ export default function BuyerLists({ mode }) {
                     </div>
                   </div>
                   {isCart && entry.listingType === 'service' && (
-                    <Link to={`/marketplace/service/${listing._id}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View service</Link>
+                    <Link to={`/listing/${encodeURIComponent(listing._id)}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View service</Link>
                   )}
                   {isCart && (
-                    <Link to={`/marketplace/${entry.listingType}/${listing._id}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View payment options</Link>
+                    <Link to={`/listing/${encodeURIComponent(listing._id)}`} className="self-center rounded-lg border border-line px-3 py-2 text-center text-xs font-medium">View payment options</Link>
                   )}
                 </li>
               );
@@ -122,15 +124,15 @@ export default function BuyerLists({ mode }) {
           {isCart && (
             <aside className="h-fit border-y border-line py-5 lg:sticky lg:top-24">
               <p className="flex justify-between gap-4 border-t border-line pt-4 font-medium"><span>Total</span><span>₦{(quote.totalKobo / 100).toLocaleString()}</span></p>
-              <p className="mt-3 text-xs leading-relaxed text-ink/55">Each product or course becomes its own order. Choose one payment option for the cart; escrow orders hold payment until completion. Without escrow, Escrit cannot hold or recover the money, but you can still report problems.</p>
+              <p className="mt-3 text-xs leading-relaxed text-ink/55">Each listing becomes its own order. Choose one payment option for the cart; escrow orders hold payment until completion. Without escrow, Escrit cannot hold or recover the money, but you can still report problems.</p>
               {!quote.feeQuoteAvailable && <p className="mt-3 text-xs text-seal">The final total is being refreshed. Try again shortly.</p>}
               {items.every((entry) => entry.listing.paymentOptions?.escrow !== false) && (
-                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable || items.some((entry) => entry.listingType === 'service')} onClick={() => checkoutCart('escrow')} className="mt-5 min-h-11 w-full rounded-lg border border-line px-4 py-3 text-sm font-medium disabled:opacity-50">
+                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable} onClick={() => checkoutCart('escrow')} className="mt-5 min-h-11 w-full rounded-lg border border-line px-4 py-3 text-sm font-medium disabled:opacity-50">
                   {checkingOut ? 'Preparing checkout…' : 'Checkout with escrow'}
                 </button>
               )}
               {items.every((entry) => entry.listing.paymentOptions?.direct !== false) && (
-                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable || items.some((entry) => entry.listingType === 'service')} onClick={() => checkoutCart('direct')} className="mt-3 min-h-11 w-full rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper disabled:opacity-50">
+                <button type="button" disabled={checkingOut || !items?.length || !quote.feeQuoteAvailable} onClick={() => checkoutCart('direct')} className="mt-3 min-h-11 w-full rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper disabled:opacity-50">
                   {checkingOut ? 'Preparing checkout…' : 'Checkout without escrow'}
                 </button>
               )}

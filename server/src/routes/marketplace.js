@@ -149,7 +149,11 @@ async function populateSavedItems(entries) {
       buyerPriceKobo: priceByLinkId.get(String(listing.escrowLinkId)) ?? null,
       paymentOptions: effectivePaymentOptions(listing, listing.seller),
       paymentOptionLabel: paymentOptionLabel(effectivePaymentOptions(listing, listing.seller)),
-      fulfillmentMethod: entry.listingType === 'product' ? effectiveFulfilment(listing, listing.seller) : undefined,
+      fulfillmentMethod: entry.listingType === 'product'
+        ? entry.fulfilment || effectiveFulfilment(listing, listing.seller)
+        : undefined,
+      paymentOption: entry.paymentOption || '',
+      fulfilment: entry.fulfilment || '',
     },
     quantity: entry.quantity || 1,
   }));
@@ -158,6 +162,9 @@ async function populateSavedItems(entries) {
 const listingReferenceSchema = Joi.object({
   listingType: Joi.string().valid('product', 'course', 'service').required(),
   listingId: Joi.string().hex().length(24).required(),
+  quantity: Joi.number().integer().min(1).max(10),
+  paymentOption: Joi.string().valid('escrow', 'direct'),
+  fulfilment: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download', ''),
 });
 const cartQuantitySchema = Joi.object({ quantity: Joi.number().integer().min(1).max(100).required() });
 const pricePreviewSchema = Joi.object({
@@ -195,19 +202,9 @@ marketplaceRouter.get('/categories/:type', asyncHandler(async (req, res) => {
 }));
 
 marketplaceRouter.get('/me/cart', requireAuth, asyncHandler(async (req, res) => {
-  const buyer = await User.findById(req.sellerId);
-  if (!buyer) throw new AppError(404, 'Account not found');
-  const nonCartItems = buyer.cartItems.filter((entry) => entry.listingType === 'service');
-  if (nonCartItems.length) {
-    for (const entry of nonCartItems) {
-      if (!buyer.favoriteListings.some((favorite) => favorite.listingType === entry.listingType && String(favorite.listingId) === String(entry.listingId))) {
-        buyer.favoriteListings.push({ listingType: entry.listingType, listingId: entry.listingId });
-      }
-    }
-    buyer.cartItems = buyer.cartItems.filter((entry) => entry.listingType === 'product');
-    await buyer.save();
-  }
-  const items = await populateSavedItems(buyer.cartItems);
+ const buyer = await User.findById(req.sellerId);
+ if (!buyer) throw new AppError(404, 'Account not found');
+ const items = await populateSavedItems(buyer.cartItems);
   const totalKobo = items.reduce((sum, entry) => sum + Number(entry.listing.buyerPriceKobo || 0) * entry.quantity, 0);
   res.json({ items, subtotalKobo: totalKobo, totalKobo, feeQuoteAvailable: items.every((entry) => entry.listing.buyerPriceKobo != null) });
 }));
@@ -466,23 +463,41 @@ marketplaceRouter.post('/me/cart/checkout', requireAuth, validate(cartCheckoutSc
 }));
 
 marketplaceRouter.post('/me/cart', requireAuth, validate(listingReferenceSchema), asyncHandler(async (req, res) => {
-  const { listingType, listingId } = req.body;
-  if (listingType === 'service') throw new AppError(409, 'Services use direct booking. Products and courses can be added to the cart.');
+  const { listingType, listingId, paymentOption, fulfilment } = req.body;
   const listing = await loadListing(listingType, listingId);
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
   const existing = buyer.cartItems.find((entry) => entry.listingType === listingType && String(entry.listingId) === listingId);
-  const quantity = listingType === 'course' ? 1 : (existing?.quantity || 0) + 1;
+  const quantity = listingType === 'product'
+    ? req.body.quantity ?? (existing?.quantity || 0) + 1
+    : 1;
+  const paymentOptions = effectivePaymentOptions(listing, listing.seller);
+  if (paymentOption && !paymentOptions[paymentOption]) throw new AppError(409, 'That payment option is not available for this listing.');
   if (listingType === 'product' && quantity > listing.stock) throw new AppError(409, 'That quantity is no longer in stock');
-  if (existing) existing.quantity = quantity;
-  else buyer.cartItems.push({ listingType, listingId, quantity: 1 });
+  const selectedFulfilment = listingType === 'product'
+    ? fulfilment || effectiveFulfilment(listing, listing.seller)
+    : '';
+  if (existing) {
+    existing.quantity = quantity;
+    if (paymentOption) existing.paymentOption = paymentOption;
+    if (selectedFulfilment) existing.fulfilment = selectedFulfilment;
+  } else {
+    buyer.cartItems.push({
+      listingType,
+      listingId,
+      quantity,
+      paymentOption: paymentOption || (paymentOptions.escrow ? 'escrow' : 'direct'),
+      fulfilment: selectedFulfilment,
+    });
+  }
+  if (existing && !existing.paymentOption) existing.paymentOption = paymentOptions.escrow ? 'escrow' : 'direct';
   await buyer.save();
   res.json({ items: await populateSavedItems(buyer.cartItems) });
 }));
 
 marketplaceRouter.patch('/me/cart/:listingType/:listingId', requireAuth, validate(cartQuantitySchema), asyncHandler(async (req, res) => {
   const { listingType, listingId } = req.params;
-  if (listingType !== 'product') throw new AppError(409, 'Course quantities cannot be changed and services use direct booking');
+  if (listingType !== 'product') throw new AppError(409, 'Only product quantities can be changed.');
   const { quantity } = req.body;
   const listing = await loadListing(listingType, listingId);
   if (listingType === 'product' && quantity > listing.stock) throw new AppError(409, 'That quantity is no longer in stock');
@@ -808,6 +823,186 @@ listingWorkflowRouter.get('/', asyncHandler(async (req, res) => {
     items,
     nextCursor: hasMore ? String(value.cursor + items.length) : null,
   });
+}));
+
+async function findPublicListing(id) {
+  if (!/^[\da-f]{24}$/i.test(id)) throw new AppError(400, 'Enter a valid listing id.');
+  for (const [type, { Model }] of Object.entries(TYPE_CONFIG)) {
+    const item = await Model.findById(id)
+      .populate('seller', 'businessName displayName fullName profilePictureUrl bio city kycStatus averageRating reviewCount transactionPreferences onboarding.fulfilmentDefault');
+    if (!item) continue;
+    if (!item.isActive || !item.isVerified || item.categoryReviewStatus === 'pending') {
+      throw new AppError(410, 'Listing is no longer available');
+    }
+    if (item.seller) sanitizePublicSeller(item.seller);
+    return { item, type };
+  }
+  throw new AppError(404, 'Listing not found');
+}
+
+async function publicListingDetail(item, type) {
+  const seller = item.seller;
+  const paymentOptions = effectivePaymentOptions(item, seller);
+  const liveListingCount = seller?._id
+    ? await Promise.all(Object.values(TYPE_CONFIG).map(({ Model }) =>
+      Model.countDocuments({ seller: seller._id, isActive: true, isVerified: true, categoryReviewStatus: 'approved' })
+    )).then((counts) => counts.reduce((sum, count) => sum + count, 0))
+    : 0;
+  const common = {
+    id: String(item._id),
+    _id: String(item._id),
+    type,
+    title: item.title,
+    description: item.description || '',
+    category: item.category || 'General',
+    price: type === 'service' ? item.basePrice : item.price,
+    coverUrl: item.images?.[0] || '',
+    gallery: item.images || [],
+    images: item.images || [],
+    ratingAvg: Number(item.averageRating || 0),
+    ratingCount: Number(item.reviewCount || 0),
+    sellerRatingAvg: Number(seller?.averageRating || 0),
+    sellerReviewCount: Number(seller?.reviewCount || 0),
+    sellerId: String(seller?._id || item.seller),
+    sellerName: publicSellerName(seller),
+    sellerVerified: seller?.kycStatus === 'verified',
+    sellerAvatarUrl: seller?.profilePictureUrl || '',
+    paymentOptions,
+    paymentOptionLabel: paymentOptionLabel(paymentOptions),
+    active: true,
+    isActive: true,
+    refundable: Boolean(item.refundable),
+    refundConditions: item.refundConditions || '',
+    createdAt: item.createdAt,
+    seller: {
+      id: String(seller?._id || item.seller),
+      displayName: publicSellerName(seller),
+      avatarUrl: seller?.profilePictureUrl || '',
+      bio: seller?.bio || '',
+      isVerified: seller?.kycStatus === 'verified',
+      ratingAvg: Number(seller?.averageRating || 0),
+      ratingCount: Number(seller?.reviewCount || 0),
+      liveListingCount,
+    },
+  };
+  if (type === 'product') {
+    return {
+      ...common,
+      stock: item.stock,
+      condition: item.condition,
+      fulfillmentMethod: effectiveFulfilment(item, seller),
+      deliveryOptions: (item.deliveryOptions || []).map((option) => ({
+        method: option.method === 'seller_delivery' ? 'delivery' : option.method,
+        fee: option.fee,
+        details: option.details,
+      })),
+      area: seller?.city || '',
+      negotiable: Boolean(item.negotiable),
+    };
+  }
+  if (type === 'course') {
+    return {
+      ...common,
+      format: item.format,
+      deliveryFormat: item.deliveryFormat,
+      level: item.level,
+      duration: item.duration,
+      accessMethod: item.format === 'pdf-ebook' ? 'Digital download' : item.deliveryFormat === 'live' ? 'Live course access' : 'Self-paced course access',
+      curriculum: (item.curriculum || []).map(({ title, description }) => ({ title, description })),
+    };
+  }
+  return {
+    ...common,
+    basePrice: item.basePrice,
+    pricingUnit: item.pricingUnit,
+    deliveryTime: item.estimatedTime,
+    estimatedTime: item.estimatedTime,
+    coordination: item.deliveryMode === 'in-person' ? 'In person' : item.deliveryMode === 'hybrid' ? 'Remote or in person' : 'Remote',
+    scheduling: 'Timing agreed in Escrit chat',
+    deliveryMode: item.deliveryMode,
+    location: item.location,
+    durationMinutes: item.durationMinutes,
+    bookingLeadTimeHours: item.bookingLeadTimeHours,
+    timeZone: item.timeZone,
+    availability: item.availability,
+    included: item.deliverables || [],
+    deliverables: item.deliverables || [],
+    requirements: item.requirements || [],
+    howItWorks: [
+      'Agree the service scope and timing with the seller in Escrit chat.',
+      'The seller completes the agreed work.',
+      'Confirm completion if you selected escrow.',
+    ],
+    cancellationPolicy: item.cancellationPolicy,
+    cancellationTerms: item.cancellationTerms,
+    reschedulePolicy: item.reschedulePolicy,
+    seller: common.seller,
+  };
+}
+
+listingWorkflowRouter.get('/:id/reviews', asyncHandler(async (req, res) => {
+  const { item, type } = await findPublicListing(req.params.id);
+  const [reviews, aggregates] = await Promise.all([
+    Review.find({ listingType: type, listingId: item._id })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select('rating comment createdAt'),
+    Review.aggregate([
+      { $match: { listingType: type, listingId: item._id } },
+      { $group: { _id: '$rating', count: { $sum: 1 } } },
+    ]),
+  ]);
+  const counts = new Map(aggregates.map(({ _id, count }) => [Number(_id), count]));
+  const total = aggregates.reduce((sum, entry) => sum + entry.count, 0);
+  res.json({
+    reviews: reviews.map((review) => ({
+      id: String(review._id),
+      rating: review.rating,
+      comment: review.comment,
+      completedOrder: true,
+      createdAt: review.createdAt,
+    })),
+    ratingDistribution: [5, 4, 3, 2, 1].map((rating) => ({
+      rating,
+      count: counts.get(rating) || 0,
+      percentage: total ? Number(((counts.get(rating) || 0) / total * 100).toFixed(1)) : 0,
+    })),
+  });
+}));
+
+listingWorkflowRouter.get('/:id/related', asyncHandler(async (req, res) => {
+  const { item, type } = await findPublicListing(req.params.id);
+  const sellerId = item.seller?._id;
+  const query = {
+    _id: { $ne: item._id },
+    isActive: true,
+    isVerified: true,
+    categoryReviewStatus: 'approved',
+    $or: [
+      { category: item.category },
+      ...(sellerId ? [{ seller: sellerId }] : []),
+    ],
+  };
+  const groups = await Promise.all(Object.entries(TYPE_CONFIG).map(async ([listingType, { Model }]) => {
+    const entries = await Model.find(query)
+      .sort({ isFeatured: -1, createdAt: -1 })
+      .limit(8)
+      .populate('seller', 'businessName displayName fullName profilePictureUrl kycStatus averageRating reviewCount transactionPreferences onboarding.fulfilmentDefault');
+    return entries.map((entry) => publicListing(entry, listingType));
+  }));
+  const candidates = groups.flat().sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
+  const sameSeller = candidates.filter((entry) => entry.sellerId === String(sellerId)).slice(0, 3);
+  res.json({
+    items: candidates.slice(0, 4),
+    sellerListings: sameSeller,
+    seller: (await publicListingDetail(item, type)).seller,
+  });
+}));
+
+listingWorkflowRouter.get('/:id', asyncHandler(async (req, res, next) => {
+  if (req.params.id === 'draft') return next();
+  const { item, type } = await findPublicListing(req.params.id);
+  res.json({ listing: await publicListingDetail(item, type) });
 }));
 
 listingWorkflowRouter.use(requireAuth);

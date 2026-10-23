@@ -256,7 +256,7 @@ export default function Marketplace() {
             return (
               <article key={item._id} className="listing-card group min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-all hover:-translate-y-1 hover:border-accent/40 hover:shadow-card-md">
                 <div className="relative aspect-[4/3] overflow-hidden bg-line/30">
-                  <Link to={`/marketplace/${type}/${item._id}`} aria-label={`View ${item.title}`}>
+                  <Link to={`/listing/${encodeURIComponent(item._id)}`} aria-label={`View ${item.title}`}>
                     <img src={image} alt={item.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                   </Link>
                   <button type="button" onClick={() => toggleFavorite(item)} aria-label={favoriteIds.has(`${type}:${item._id}`) ? `Remove ${item.title} from saved listings` : `Save ${item.title}`} title="Save listing" className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-paper/95 text-ink shadow-sm transition-colors hover:border-accent hover:text-accent">
@@ -271,7 +271,7 @@ export default function Marketplace() {
                   </div>
 
                   <div>
-                    <h2 className="min-h-10 font-display text-sm leading-5 sm:text-base"><Link to={`/marketplace/${type}/${item._id}`} className="line-clamp-2 hover:underline">{item.title}</Link></h2>
+                    <h2 className="min-h-10 font-display text-sm leading-5 sm:text-base"><Link to={`/listing/${encodeURIComponent(item._id)}`} className="line-clamp-2 hover:underline">{item.title}</Link></h2>
                     <Link to={`/marketplace/seller/${item.seller?._id}`} onClick={(event) => event.stopPropagation()} className="mt-1 block line-clamp-1 text-xs text-ink/55 hover:text-accent hover:underline">{item.seller?.displayName || item.seller?.businessName || 'Escrit seller'}</Link>
                   </div>
 
@@ -279,7 +279,7 @@ export default function Marketplace() {
                     <p className="truncate text-sm font-semibold sm:text-base">{priceText}</p>
                     <span className="shrink-0 text-[10px] text-ink/55 sm:text-xs">{item.averageRating ? `★ ${Number(item.averageRating).toFixed(1)}` : item.isVerified ? 'Verified' : ''}</span>
                   </div>
-                  <p className="text-[10px] font-medium text-ink/55">{item.paymentOptionLabel || 'Escrow optional'}</p>
+                  <p className="text-[10px] font-medium text-ink/55">{item.paymentOptionLabel || 'Payment options vary'}</p>
 
                   {isQuickViewOpen && <p className="line-clamp-3 border-t border-line pt-2 text-xs leading-5 text-ink/65">{item.description || 'No description provided yet.'}</p>}
 
@@ -291,7 +291,7 @@ export default function Marketplace() {
                       <button type="button" onClick={() => addToCart(item)} disabled={item.seller?.isDemoSeed || type === 'product' && item.stock < 1} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-accent px-2.5 py-2 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3">
                         <CartIcon width={14} height={14} /> Add
                       </button>
-                    ) : <Link to={`/marketplace/${type}/${item._id}`} className="shrink-0 rounded-md bg-accent px-2.5 py-2 text-center text-[11px] font-semibold text-accent-ink sm:px-3">View options</Link>}
+                    ) : <Link to={`/listing/${encodeURIComponent(item._id)}`} className="shrink-0 rounded-md bg-accent px-2.5 py-2 text-center text-[11px] font-semibold text-accent-ink sm:px-3">View options</Link>}
                   </div>
                 </div>
               </article>

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BadgeCheck, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import ListingDetailsDialog from './ListingDetailsDialog.jsx';
 
 const TYPE_FILTERS = [
   ['all', 'All'],
@@ -11,36 +10,24 @@ const TYPE_FILTERS = [
 ];
 const money = new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 });
 
-function ListingTile({ listing, onOpen }) {
+function ListingTile({ listing }) {
   const [imageFailed, setImageFailed] = useState(!listing.coverUrl);
   const typeName = listing.type === 'product' ? 'Product' : listing.type === 'service' ? 'Service' : 'Course';
 
   return (
     <article className="landing-listing-card">
-      <div
-        role="group"
-        tabIndex={0}
-        className="landing-listing-open"
-        aria-label={`Listing: ${listing.title}`}
-        onClick={(event) => { if (!event.target.closest('a')) onOpen(event); }}
-        onKeyDown={(event) => {
-          if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
-            event.preventDefault();
-            onOpen(event);
-          }
-        }}
-      >
-        <span className="landing-listing-image">
+      <div className="landing-listing-open">
+        <Link to={`/listing/${encodeURIComponent(listing.id)}`} className="landing-listing-image" aria-label={`View ${listing.title}`}>
           {!imageFailed ? (
             <img src={listing.coverUrl} alt="" loading="lazy" onError={() => setImageFailed(true)} />
           ) : (
             <span className="landing-image-fallback" aria-hidden="true">{listing.title.trim().charAt(0).toLocaleUpperCase()}</span>
           )}
           <span className="landing-listing-type">{typeName}</span>
-        </span>
+        </Link>
         <span className="landing-listing-content">
           <span className="landing-listing-category">{listing.category}</span>
-          <strong className="landing-listing-title">{listing.title}</strong>
+          <strong className="landing-listing-title"><Link to={`/listing/${encodeURIComponent(listing.id)}`} className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">{listing.title}</Link></strong>
           <span className="landing-listing-seller">
             {listing.sellerAvatarUrl ? (
               <img src={listing.sellerAvatarUrl} alt="" loading="lazy" />
@@ -67,7 +54,7 @@ function ListingTile({ listing, onOpen }) {
           </span>
           <span className="landing-listing-bottom">
             <strong>₦{money.format(Number(listing.price) || 0)}</strong>
-            <span>{listing.paymentOptionLabel || 'Escrow optional'}</span>
+            <span>{listing.paymentOptionLabel || 'Payment options vary'}</span>
           </span>
         </span>
       </div>
@@ -75,22 +62,8 @@ function ListingTile({ listing, onOpen }) {
   );
 }
 
-export default function FeaturedListings({ filters, listings, loading, error, isAuthed, onRetry, onClearFilters }) {
-  const [selectedListing, setSelectedListing] = useState(null);
-  const returnFocusRef = useRef(null);
+export default function FeaturedListings({ filters, listings, loading, error, onRetry, onClearFilters }) {
   const { type, setType, filteredListings, hasActiveFilters } = filters;
-
-  const openListing = (listing, event) => {
-    returnFocusRef.current = event.currentTarget;
-    setSelectedListing(listing);
-  };
-
-  useEffect(() => {
-    if (!selectedListing && returnFocusRef.current) {
-      returnFocusRef.current.focus();
-      returnFocusRef.current = null;
-    }
-  }, [selectedListing]);
 
   const orderedListings = useMemo(
     () => [...filteredListings].sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)),
@@ -142,7 +115,7 @@ export default function FeaturedListings({ filters, listings, loading, error, is
         ) : orderedListings.length ? (
           <div className="landing-listing-grid">
             {orderedListings.map((listing) => (
-              <ListingTile key={`${listing.type}-${listing.id}`} listing={listing} onOpen={(event) => openListing(listing, event)} />
+              <ListingTile key={`${listing.type}-${listing.id}`} listing={listing} />
             ))}
           </div>
         ) : (
@@ -152,13 +125,6 @@ export default function FeaturedListings({ filters, listings, loading, error, is
           </div>
         )}
       </div>
-      {selectedListing && (
-        <ListingDetailsDialog
-          listing={selectedListing}
-          isAuthed={isAuthed}
-          onClose={() => setSelectedListing(null)}
-        />
-      )}
     </section>
   );
 }
