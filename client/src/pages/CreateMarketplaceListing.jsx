@@ -44,6 +44,17 @@ export default function CreateMarketplaceListing() {
       refundConditions: '',
       curriculum: [{ title: 'Module 1', description: '', videoUrl: '' }],
       basePrice: typeMeta.defaults.basePrice ?? 0,
+      serviceModel: 'appointment',
+      packageName: 'Standard',
+      packageDescription: '',
+      packagePrice: typeMeta.defaults.basePrice ?? 30000,
+      packageDeliveryDays: 7,
+      packageRevisionCount: 1,
+      packageDeliverablesText: '',
+      addOnEnabled: false,
+      addOnName: '',
+      addOnDescription: '',
+      addOnPrice: 5000,
       pricingUnit: typeMeta.defaults.pricingUnit ?? 'project',
       estimatedTime: typeMeta.defaults.estimatedTime ?? '1-2 weeks',
       location: typeMeta.defaults.location ?? 'Remote',
@@ -88,10 +99,12 @@ export default function CreateMarketplaceListing() {
     setRequestCategory(false);
   }, [safeType, initialState]);
 
-  const basePrice = Number(safeType === 'service' ? form.basePrice : form.price);
+  const basePrice = Number(safeType === 'service'
+    ? form.serviceModel === 'fixed_scope' ? form.packagePrice : form.basePrice
+    : form.price);
 
   useEffect(() => {
-    if (!Number.isFinite(basePrice) || basePrice < 100) {
+    if (!Number.isFinite(basePrice) || basePrice < 100 || (safeType === 'service' && form.serviceModel === 'custom_quote')) {
       setPricePreview(null);
       return undefined;
     }
@@ -112,7 +125,7 @@ export default function CreateMarketplaceListing() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [basePrice, safeType, form.scheduledDiscountEnabled, form.discountPercent, form.discountStartsAt, form.discountEndsAt]);
+  }, [basePrice, safeType, form.serviceModel, form.scheduledDiscountEnabled, form.discountPercent, form.discountStartsAt, form.discountEndsAt]);
 
   function setValue(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -143,7 +156,24 @@ export default function CreateMarketplaceListing() {
         deliveryFormat: form.deliveryFormat,
         curriculum: safeType === 'course' ? form.curriculum : undefined,
         refundConditions: form.refundConditions,
-        basePrice: Number(form.basePrice || 0),
+        basePrice: Number(safeType === 'service' && form.serviceModel === 'fixed_scope' ? form.packagePrice : form.basePrice || 0),
+        serviceModel: form.serviceModel,
+        packages: safeType === 'service' && form.serviceModel === 'fixed_scope' ? [{
+          key: 'standard',
+          name: form.packageName,
+          description: form.packageDescription,
+          priceNaira: Number(form.packagePrice),
+          deliveryDays: Number(form.packageDeliveryDays),
+          revisionCount: Number(form.packageRevisionCount),
+          deliverables: form.packageDeliverablesText.split('\n').map((value) => value.trim()).filter(Boolean),
+        }] : [],
+        addOns: safeType === 'service' && form.serviceModel === 'fixed_scope' && form.addOnEnabled ? [{
+          key: 'extra',
+          name: form.addOnName,
+          description: form.addOnDescription,
+          priceNaira: Number(form.addOnPrice),
+        }] : [],
+        maxRevisions: Number(form.packageRevisionCount || 0),
         pricingUnit: form.pricingUnit,
         estimatedTime: form.estimatedTime,
         location: form.location,
@@ -339,8 +369,34 @@ export default function CreateMarketplaceListing() {
 
         {safeType === 'service' && (
           <div className="space-y-5">
+            <fieldset className="space-y-3 rounded-lg border border-line p-4">
+              <legend className="px-1 text-sm font-medium">How buyers book this service</legend>
+              {[
+                ['appointment', 'Appointment', 'Buyer requests an available time; you confirm before payment.'],
+                ['fixed_scope', 'Fixed scope', 'Buyer chooses a defined package and pays after accepting its terms.'],
+                ['custom_quote', 'Custom quote', 'Buyer describes the work; you agree scope and price in Escrit chat.'],
+              ].map(([value, label, description]) => (
+                <label key={value} className="flex min-h-11 items-start gap-3 rounded-md p-2 text-sm hover:bg-paper/70">
+                  <input type="radio" name="serviceModel" value={value} checked={form.serviceModel === value} onChange={() => setValue('serviceModel', value)} className="mt-1" />
+                  <span><strong className="block font-medium">{label}</strong><span className="text-xs text-ink/55">{description}</span></span>
+                </label>
+              ))}
+            </fieldset>
+            {form.serviceModel === 'fixed_scope' ? (
+              <fieldset className="grid gap-4 rounded-lg border border-line p-4 sm:grid-cols-2">
+                <legend className="px-1 text-sm font-medium">Standard package</legend>
+                <label className="text-sm text-ink/70">Package name<input required maxLength={80} value={form.packageName} onChange={(event) => setValue('packageName', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="text-sm text-ink/70">Price (₦)<input type="number" min="100" required value={form.packagePrice} onChange={(event) => setValue('packagePrice', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="text-sm text-ink/70">Delivery time (days)<input type="number" min="1" max="365" required value={form.packageDeliveryDays} onChange={(event) => setValue('packageDeliveryDays', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="text-sm text-ink/70">Included revisions<input type="number" min="0" max="20" required value={form.packageRevisionCount} onChange={(event) => setValue('packageRevisionCount', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="text-sm text-ink/70 sm:col-span-2">Scope summary<textarea rows={2} maxLength={500} value={form.packageDescription} onChange={(event) => setValue('packageDescription', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="text-sm text-ink/70 sm:col-span-2">Deliverables, one per line<textarea rows={3} value={form.packageDeliverablesText} onChange={(event) => setValue('packageDeliverablesText', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label>
+                <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.addOnEnabled} onChange={(event) => setValue('addOnEnabled', event.target.checked)} />Offer one optional extra</label>
+                {form.addOnEnabled && <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2"><label className="text-sm text-ink/70">Extra name<input required maxLength={80} value={form.addOnName} onChange={(event) => setValue('addOnName', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label><label className="text-sm text-ink/70">Extra price (₦)<input type="number" min="100" required value={form.addOnPrice} onChange={(event) => setValue('addOnPrice', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label><label className="text-sm text-ink/70 sm:col-span-2">Extra description<input maxLength={300} value={form.addOnDescription} onChange={(event) => setValue('addOnDescription', event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2" /></label></div>}
+              </fieldset>
+            ) : null}
             <div className="grid gap-5 md:grid-cols-2">
-            <label className="block">
+            {form.serviceModel === 'appointment' && <label className="block">
               <span className="text-sm text-ink/70">Base price (₦)</span>
               <input
                 type="number"
@@ -350,45 +406,45 @@ export default function CreateMarketplaceListing() {
                 onChange={(e) => setValue('basePrice', e.target.value)}
                 className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg"
               />
-              <span className="mt-1 block text-xs text-ink/50">Service bookings are paid directly at the listed price.</span>
-            </label>
-            <label className="block">
+              <span className="mt-1 block text-xs text-ink/50">Buyers can choose the supported payment option at checkout.</span>
+            </label>}
+            {form.serviceModel !== 'custom_quote' && <label className="block">
               <span className="text-sm text-ink/70">Pricing unit</span>
               <input
                 value={form.pricingUnit}
                 onChange={(e) => setValue('pricingUnit', e.target.value)}
                 className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg"
               />
-            </label>
-            <label className="block">
+            </label>}
+            {form.serviceModel === 'appointment' && <label className="block">
               <span className="text-sm text-ink/70">Estimated time</span>
               <input
                 value={form.estimatedTime}
                 onChange={(e) => setValue('estimatedTime', e.target.value)}
                 className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg"
               />
-            </label>
-            <label className="block">
+            </label>}
+            {form.serviceModel === 'appointment' && <label className="block">
               <span className="text-sm text-ink/70">Location</span>
               <input
                 value={form.location}
                 onChange={(e) => setValue('location', e.target.value)}
                 className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg"
               />
-            </label>
+            </label>}
             </div>
-            <label className="block">
+            {form.serviceModel === 'appointment' && <label className="block">
               <span className="text-sm text-ink/70">How is this service delivered?</span>
               <select value={form.deliveryMode} onChange={(e) => setValue('deliveryMode', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg">
                 <option value="remote">Remote</option>
                 <option value="in-person">In person</option>
                 <option value="hybrid">Remote or in person</option>
               </select>
-            </label>
-            <label className="block">
+            </label>}
+            {form.serviceModel === 'appointment' && <label className="block">
               <span className="text-sm text-ink/70">Time zone</span>
               <input value={form.timeZone} onChange={(e) => setValue('timeZone', e.target.value)} required className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" />
-            </label>
+            </label>}
             <label className="block">
               <span className="text-sm text-ink/70">Service radius (km, for in-person work)</span>
               <input type="number" min="0" max="1000" value={form.serviceRadiusKm} onChange={(e) => setValue('serviceRadiusKm', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" />
@@ -405,7 +461,7 @@ export default function CreateMarketplaceListing() {
               <span className="text-sm text-ink/70">Maximum bookings per day</span>
               <input type="number" min="1" max="100" value={form.maxBookingsPerDay} onChange={(e) => setValue('maxBookingsPerDay', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" />
             </label>
-            <fieldset className="md:col-span-2">
+            {form.serviceModel === 'appointment' && <fieldset className="md:col-span-2">
               <legend className="text-sm text-ink/70">Weekly availability ({form.timeZone})</legend>
               <div className="mt-2 flex flex-wrap gap-3">
                 {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
@@ -419,7 +475,7 @@ export default function CreateMarketplaceListing() {
                 <label className="text-sm">From<input type="time" value={form.availabilityStart} onChange={(e) => setValue('availabilityStart', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" /></label>
                 <label className="text-sm">To<input type="time" value={form.availabilityEnd} onChange={(e) => setValue('availabilityEnd', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" /></label>
               </div>
-            </fieldset>
+            </fieldset>}
             <label className="block md:col-span-2">
               <span className="text-sm text-ink/70">What the buyer receives (one item per line)</span>
               <textarea rows={3} value={form.deliverablesText} onChange={(e) => setValue('deliverablesText', e.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" />

@@ -21,7 +21,7 @@ export default function LandingHero({
           <span className="landing-hero-accent">Transact with confidence.</span>
         </h1>
         <p className="landing-hero-copy">
-          Shop products, learn new skills, and find services—or bring Escrit escrow to a transaction you arranged anywhere.
+          Shop products, learn new skills, and find services—or bring Escrit escrow to a transaction you arranged anywhere. Escrow is optional on listings that offer both payment methods.
         </p>
 
         <form className="landing-search" onSubmit={onSearch} role="search">

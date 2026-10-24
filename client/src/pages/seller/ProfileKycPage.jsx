@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import ShopifyIntegration from '../../components/ShopifyIntegration.jsx';
-import { CheckCircleIcon, IdentityVerificationIcon, ShieldCheckIcon } from '../../components/icons.jsx';
+import { CheckCircleIcon, ShieldCheckIcon } from '../../components/icons.jsx';
 import { useKyc } from '../../hooks/useKyc.js';
 import { useProfile } from '../../hooks/useProfile.js';
 import KycSelfieCamera from '../../components/KycSelfieCamera.jsx';
@@ -19,6 +19,7 @@ import {
   validateStep,
 } from '../../lib/kycState.js';
 import { usePageTitle } from '../../lib/usePageTitle.js';
+import { KycPreviewIcon } from '../../components/admin/AdminNavIcon.jsx';
 
 const FIELD_CLASS = 'mt-1 min-h-11 w-full rounded-xl border border-line bg-input px-3 py-2 text-base text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
 
@@ -338,7 +339,7 @@ function VerificationScreen({ status, kyc, onRetry, onSimulate, error, bankAccou
   if (status === 'pending') {
     return (
       <section className="rounded-2xl border border-line bg-paper p-6 text-center shadow-card">
-        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-ochre/10"><IdentityVerificationIcon width={24} height={24} /></div>
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-ochre/10"><KycPreviewIcon width={24} height={24} /></div>
         <h2 className="mt-4 font-display text-2xl">Documents submitted</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-ink/65">Documents submitted. We&apos;re reviewing your details and will notify you when it&apos;s done.</p>
         {error && <p role="alert" className="mt-4 text-sm text-dispute">{error}</p>}
@@ -389,7 +390,7 @@ export function ProfileKycPage() {
     <main className="mx-auto max-w-7xl">
       <header className="mb-5 border-b border-line pb-5">
         <p className="text-xs font-medium uppercase tracking-wider text-ink/50">Your account</p>
-        <h1 className="mt-2 flex items-center gap-3 font-display text-3xl"><IdentityVerificationIcon width={30} height={30} />Profile &amp; KYC</h1>
+        <h1 className="mt-2 flex items-center gap-3 font-display text-3xl"><KycPreviewIcon width={30} height={30} />Profile &amp; KYC</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/60">Verify your identity so you can create payment links and get paid.</p>
       </header>
       <StatusCard seller={{
@@ -402,7 +403,7 @@ export function ProfileKycPage() {
           ['verification', 'Verification'],
           ['profile', 'Profile'],
         ].map(([value, label]) => (
-          <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${tab === value ? 'bg-accent text-accent-ink' : 'text-ink/65 hover:text-ink'}`}>{value === 'verification' && <IdentityVerificationIcon width={17} height={17} />}{label}</button>
+          <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${tab === value ? 'bg-accent text-accent-ink' : 'text-ink/65 hover:text-ink'}`}>{value === 'verification' && <KycPreviewIcon width={17} height={17} />}{label}</button>
         ))}
       </div>
 

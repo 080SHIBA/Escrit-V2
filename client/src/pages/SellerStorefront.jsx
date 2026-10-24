@@ -92,7 +92,7 @@ export default function SellerStorefront() {
   const loadStore = useCallback(() => {
     if (!id) return Promise.resolve();
     setError('');
-    return api.getPublicSeller(id)
+    return api.getPublicSeller(id, isOwnStore ? account : null)
       .then((data) => {
         setStore(data);
         if (isOwnStore) {
@@ -105,12 +105,12 @@ export default function SellerStorefront() {
         }
       })
       .catch((loadError) => setError(loadError.message || 'Seller storefront could not be loaded.'));
-  }, [id, isOwnStore]);
+  }, [account, id, isOwnStore]);
 
   useEffect(() => {
     let active = true;
     if (!id) return undefined;
-    api.getPublicSeller(id)
+    api.getPublicSeller(id, isOwnStore ? account : null)
       .then((data) => {
         if (!active) return;
         setStore(data);
@@ -125,7 +125,7 @@ export default function SellerStorefront() {
       })
       .catch((loadError) => active && setError(loadError.message || 'Seller storefront could not be loaded.'));
     return () => { active = false; };
-  }, [id, isOwnStore]);
+  }, [account, id, isOwnStore]);
 
   useEffect(() => {
     if (!isOwnStore) return undefined;
@@ -241,7 +241,7 @@ export default function SellerStorefront() {
               ) : <p className="mt-2 text-sm text-ink/55">No completed-order reviews yet</p>}
               {storefrontSeller.city && <p className="mt-2 flex items-center gap-1.5 text-sm text-ink/55"><MapPin size={15} aria-hidden="true" />{storefrontSeller.city}</p>}
               {storefrontSeller.bio && <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-6 text-ink/65">{storefrontSeller.bio}</p>}
-              <p className="mt-3 text-xs text-ink/45">On Escrit since {new Date(storefrontSeller.createdAt).toLocaleDateString()}</p>
+              {storefrontSeller.createdAt && Number.isFinite(new Date(storefrontSeller.createdAt).getTime()) && <p className="mt-3 text-xs text-ink/45">On Escrit since {new Date(storefrontSeller.createdAt).toLocaleDateString()}</p>}
               <div className="mt-4 flex flex-wrap gap-2">
                 <button type="button" onClick={copyStorefrontLink} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line px-4 text-sm font-medium hover:border-accent"><Copy size={16} aria-hidden="true" />Copy storefront link</button>
                 {copyMessage && <p role="status" className="self-center text-sm text-ink/55">{copyMessage}</p>}

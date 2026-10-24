@@ -27,7 +27,7 @@ export default function FilterChips({ minRating, onRatingChange, category, onCat
               category === name ? 'border-line-strong bg-paper-2 text-ink' : 'border-line bg-surface text-ink/65 hover:border-line-strong hover:text-ink'
             }`}
           >
-            {name === 'all' ? 'All' : name}
+            {name === 'all' ? 'Any category' : name}
           </button>
         ))}
       </div>

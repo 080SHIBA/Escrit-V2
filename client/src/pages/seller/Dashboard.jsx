@@ -18,9 +18,9 @@ import {
   PromotionCreditsIcon,
   MyOrdersIcon,
   ShieldCheckIcon,
-  UserIcon,
 } from '../../components/icons.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
+import { KycPreviewIcon, TransactionPreferencesIcon } from '../../components/admin/AdminNavIcon.jsx';
 
 const TOUR_STEPS = [
   {
@@ -390,7 +390,7 @@ export default function Dashboard() {
             badge={!hasBankAccount ? 'Required' : null}
           />
           <DashboardActionCard to="/account/price-offers" title="Product price offers" description="Offers from buyers" Icon={PriceOffersIcon} />
-          <DashboardActionCard to="/account/transaction-preferences" title="Transaction preferences" description="Set payment and delivery defaults" Icon={ShieldCheckIcon} />
+          <DashboardActionCard to="/account/transaction-preferences" title="Transaction preferences" description="Set payment and delivery defaults" Icon={TransactionPreferencesIcon} />
           <DashboardActionCard
             to="/account/credits"
             title="Promotion credits"
@@ -406,7 +406,7 @@ export default function Dashboard() {
         <div className="grid gap-3 sm:grid-cols-2">
           <DashboardActionCard to="/account/orders" title="Buyer orders" description="Things you bought" Icon={MyOrdersIcon} />
           <DashboardActionCard
-            to="/account/cart"
+            to="/cart"
             title="Shopping cart"
             description={cartError
               ? `Cart unavailable: ${cartError}`
@@ -435,7 +435,7 @@ export default function Dashboard() {
             to="/settings"
             title="Profile and KYC"
             description={seller?.kycStatus === 'verified' ? 'Your identity is verified' : 'Review identity details and next steps'}
-            Icon={UserIcon}
+            Icon={KycPreviewIcon}
             badge={seller?.kycStatus === 'verified' ? 'Verified' : seller?.kycStatus === 'rejected' ? 'Needs attention' : 'Pending'}
           />
         </div>

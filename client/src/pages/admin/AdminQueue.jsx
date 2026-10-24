@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../../lib/api.js';
-import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
+import AdminToolsNav from '../../components/admin/AdminToolsNav.jsx';
 
 export default function AdminQueue({ mode }) {
-  const { seller } = useAuthContext();
   const [rows, setRows] = useState(null);
   const [notes, setNotes] = useState({});
   const [error, setError] = useState('');
@@ -81,26 +79,20 @@ export default function AdminQueue({ mode }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full max-w-none">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
         <div><p className="text-xs uppercase tracking-wider text-ink/50">Admin</p><h1 className="mt-2 font-display text-3xl">{title}</h1></div>
-        <nav aria-label="Admin tools" className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-          <Link to="/admin/disputes" className="underline underline-offset-4">Disputes</Link>
-          <Link to="/admin/complaints" className="underline underline-offset-4">Complaints</Link>
-          <Link to="/admin/kyc" className="underline underline-offset-4">KYC</Link>
-          <Link to="/admin/listings" className="underline underline-offset-4">Listings</Link>
-          <Link to="/admin/categories" className="underline underline-offset-4">Categories</Link>
-          <Link to="/admin/settings" className="underline underline-offset-4">Settings</Link>
-          {seller?.isOwner && <Link to="/admin/users" className="underline underline-offset-4">Roles</Link>}
-        </nav>
+        <AdminToolsNav />
       </header>
       {error && <p role="alert" className="mt-5 text-sm text-dispute">{error}</p>}
       {rows === null && !error && <p className="py-8 text-sm text-ink/55">Loading review queue…</p>}
       {rows?.length === 0 && <p className="mt-6 border-y border-line py-8 text-center text-sm text-ink/55">Nothing needs review right now.</p>}
 
-      <ul className="mt-5 divide-y divide-line">
+      <ul className={`mt-5 ${isListings ? 'grid gap-4' : 'divide-y divide-line lg:grid lg:gap-4 lg:divide-none'}`}>
         {rows?.map((row) => (
-          <li key={row._id} className="py-5">
+          <li key={row._id} className={isListings
+            ? 'rounded-2xl border border-line bg-surface p-4 shadow-card-md sm:p-5'
+            : 'py-5 lg:rounded-2xl lg:border lg:border-line lg:bg-surface lg:p-5 lg:shadow-card-md'}>
             {isKyc ? <KycRow user={row} note={notes[row._id] || ''} onNote={(value) => setNotes((current) => ({ ...current, [row._id]: value }))} onReview={(approved) => review(row._id, approved)} busy={busyId === row._id} /> : isListings ? <ListingRow listing={row} note={notes[row._id] || ''} onNote={(value) => setNotes((current) => ({ ...current, [row._id]: value }))} onReview={(approved) => moderate(row, approved)} busy={busyId === row._id} /> : isComplaints ? <ComplaintRow entry={row} /> : isCategories ? <CategoryRow category={row} busy={busyId === row._id} onReview={(decision, target) => reviewCategory(row, decision, target)} /> : <UserRow user={row} onChange={(role) => changeRole(row, role)} busy={busyId === row._id} />}
           </li>
         ))}
@@ -130,7 +122,7 @@ function KycRow({ user, note, onNote, onReview, busy }) {
 }
 
 function ListingRow({ listing, note, onNote, onReview, busy }) {
-  return <section className="grid gap-4 md:grid-cols-[8rem_1fr_18rem]">
+  return <section className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(9rem,12rem)_minmax(0,1fr)_minmax(17rem,20rem)]">
     {listing.images?.[0] ? <img src={listing.images[0]} alt="" className="aspect-square w-full rounded-md object-cover" /> : <div className="aspect-square rounded-md bg-line/40" />}
     <div><p className="text-xs uppercase tracking-wider text-ink/50">{listing.listingType} · {listing.category}</p><h2 className="mt-1 font-medium">{listing.title}</h2><p className="mt-1 text-sm text-ink/60">{listing.seller?.businessName} · {listing.seller?.email}</p><p className="mt-2 line-clamp-3 text-sm leading-5 text-ink/60">{listing.description}</p></div>
     <div className="space-y-2"><label className="block text-xs text-ink/55">Moderation note<textarea value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} rows={2} className="mt-1 w-full border border-line bg-input px-2 py-1.5 text-sm" /></label><div className="flex gap-2"><button disabled={busy} onClick={() => onReview(true)} className="flex-1 rounded-md bg-released px-3 py-2 text-xs font-medium text-paper disabled:opacity-50">Approve</button><button disabled={busy} onClick={() => onReview(false)} className="flex-1 rounded-md border border-dispute/40 px-3 py-2 text-xs font-medium text-dispute disabled:opacity-50">Reject</button></div></div>

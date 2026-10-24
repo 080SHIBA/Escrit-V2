@@ -20,6 +20,8 @@ import { getConfiguredModes } from '../services/paymentMode.js';
 import { env } from '../config/env.js';
 import { KycSubmission } from '../models/KycSubmission.js';
 import { privateKycAssetUrl } from '../services/privateKycStorage.js';
+import { notifyUser } from '../services/notifications.js';
+import { sendPromotionEmail } from '../services/mailer.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -118,13 +120,68 @@ adminRouter.post('/kyc/:userId/review', validate(kycReviewSchema), asyncHandler(
     submission.reviewedAt = new Date();
     await submission.save();
   }
+  const priorUser = await User.findById(req.params.userId).select('kycStatus email');
   const user = await User.findByIdAndUpdate(req.params.userId, {
     kycStatus: req.body.status,
     kycReviewNote: req.body.note,
     kycReviewedAt: new Date(),
   }, { new: true });
   if (!user) throw new AppError(404, 'Account not found');
+  if (req.body.status === 'verified' && priorUser?.kycStatus !== 'verified') {
+    await notifyUser({
+      io: req.app.get('io'),
+      recipientId: user._id,
+      type: 'kyc_verified',
+      title: 'Identity verification complete',
+      message: 'Your identity verification was approved. You can now use the seller features that require verification.',
+      href: '/settings',
+      dedupeKey: `kyc-verified:${user._id}:${user.kycReviewedAt?.getTime() || Date.now()}`,
+      email: {
+        to: user.email,
+        subject: 'Your Escrit identity verification is complete',
+        href: new URL('/settings', env.clientUrl).toString(),
+      },
+    });
+  }
   res.json({ user });
+}));
+
+const promotionEmailSchema = Joi.object({
+  subject: Joi.string().trim().min(3).max(100).required(),
+  title: Joi.string().trim().min(3).max(100).required(),
+  message: Joi.string().trim().min(10).max(2000).required(),
+  path: Joi.string().pattern(/^\/(?!\/)[^\r\n]*$/).max(200).allow('').default(''),
+});
+
+adminRouter.post('/promotions/email', requireOwner, validate(promotionEmailSchema), asyncHandler(async (req, res) => {
+  const recipients = await User.find({
+    marketingEmailOptIn: true,
+    emailVerified: true,
+  }).select('email').lean();
+  const href = req.body.path ? new URL(req.body.path, env.clientUrl).toString() : '';
+  let deliveredCount = 0;
+  let failedCount = 0;
+
+  for (let index = 0; index < recipients.length; index += 10) {
+    const batch = recipients.slice(index, index + 10);
+    const results = await Promise.allSettled(batch.map((recipient) => sendPromotionEmail(recipient.email, {
+      subject: `${req.body.subject} — Escrit`,
+      title: req.body.title,
+      message: req.body.message,
+      href,
+    })));
+    for (const result of results) {
+      if (result.status === 'fulfilled') deliveredCount += 1;
+      else failedCount += 1;
+    }
+  }
+
+  if (failedCount) console.error(`[marketing] Promotion email delivery failed for ${failedCount} of ${recipients.length} opted-in recipients`);
+  res.json({
+    recipientCount: recipients.length,
+    deliveredCount,
+    failedCount,
+  });
 }));
 
 const listingModels = { product: Product, course: Course, service: Service };

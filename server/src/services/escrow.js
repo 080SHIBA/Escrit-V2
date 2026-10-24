@@ -12,6 +12,8 @@ import { Product } from '../models/Product.js';
 import { getPlatformSettings } from './platformSettings.js';
 import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
 import { isAutomaticReleaseDue } from '../../../shared/orderState.js';
+import { notifyPaymentConfirmed } from './notificationEvents.js';
+import { ServiceOrder } from '../models/ServiceOrder.js';
 
 /**
  * CREATED -> PAID_HELD. Called after a verified payment success (webhook
@@ -43,7 +45,7 @@ export async function markPaidAndHeld(tx) {
   return tx;
 }
 
-async function verifyCheckoutGroup(tx) {
+async function verifyCheckoutGroup(tx, io) {
   if (!tx.paymentProviderTransactionId) return tx;
   const group = await Transaction.find({ paymentProvider: tx.paymentProvider, paymentReference: tx.paymentReference, status: TX_STATUS.CREATED });
   if (!group.length) return tx;
@@ -56,13 +58,39 @@ async function verifyCheckoutGroup(tx) {
     verified.status !== 'successful' ||
     verified.tx_ref !== tx.paymentReference ||
     verified.currency !== 'NGN' ||
-    Number(verified.amount) * 100 < expectedKobo
+    Math.round(Number(verified.amount) * 100) !== expectedKobo
   ) return tx;
 
   let target = tx;
   for (const entry of group) {
     entry.paymentProviderTransactionId = String(verified.id);
     const paid = entry.checkoutMode === 'direct' ? await settleDirectPurchase(entry) : await markPaidAndHeld(entry);
+    if (entry.serviceOrderId && [TX_STATUS.PAID_HELD, TX_STATUS.DIRECT_PAID].includes(paid.status)) {
+      await ServiceOrder.updateOne(
+        { _id: entry.serviceOrderId, status: 'awaiting_payment', paymentStatus: { $ne: 'paid' } },
+        {
+          $set: {
+            paymentStatus: 'paid',
+            status: entry.serviceOrderKind === 'appointment' ? 'confirmed' : 'ready_to_start',
+            reservationExpiresAt: null,
+          },
+          $push: {
+            events: {
+              status: entry.serviceOrderKind === 'appointment' ? 'confirmed' : 'ready_to_start',
+              actorId: entry.buyerUserId,
+              note: 'Payment verified by the provider.',
+            },
+          },
+        }
+      );
+    }
+    if ([TX_STATUS.PAID_HELD, TX_STATUS.DIRECT_PAID].includes(paid.status)) {
+      await notifyPaymentConfirmed({
+        io,
+        transaction: paid,
+        link: linkById.get(String(entry.linkId)),
+      });
+    }
     if (String(entry._id) === String(tx._id)) target = paid;
   }
 
@@ -129,11 +157,11 @@ async function claimSettlementOperation(tx, operation, allowedStatuses = [TX_STA
  * be missed (for example in local development), so status routes call
  * this and a stuck "awaiting payment" order heals on the next poll.
  */
-export async function reconcileWithPaymentProvider(tx) {
+export async function reconcileWithPaymentProvider(tx, io) {
   if (tx.status !== TX_STATUS.CREATED) return tx;
   try {
     if (tx.paymentReference && tx.paymentProvider) {
-      return await verifyCheckoutGroup(tx);
+      return await verifyCheckoutGroup(tx, io);
     }
   } catch (err) {
     // Provider unreachable or reference not found yet: leave the order

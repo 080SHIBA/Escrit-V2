@@ -5,6 +5,7 @@ import { useAuthContext } from '../lib/AuthContext.jsx';
 import { useCart } from '../hooks/useCart.js';
 import { useListingDetail } from '../hooks/useListingDetail.js';
 import { useSaved } from '../hooks/useSaved.js';
+import { useRecentlyViewed } from '../hooks/useRecentlyViewed.js';
 import { usePageTitle } from '../lib/usePageTitle.js';
 import { getDefaultPaymentOption } from '../lib/listingDetailState.js';
 import BuyBox from '../components/listing-detail/BuyBox.jsx';
@@ -148,6 +149,7 @@ export default function ListingDetailPage() {
   const navigate = useNavigate();
   const { seller, status } = useAuthContext();
   const { listing, reviews, ratingDistribution, related, sellerListings, loading, error } = useListingDetail(id);
+  useRecentlyViewed(listing);
   const { cartIds, addToCart } = useCart();
   const { savedIds, toggleSaved: toggleSavedListing } = useSaved();
   const [paymentOption, setPaymentOption] = useState('');
@@ -268,7 +270,7 @@ export default function ListingDetailPage() {
           <RelatedListings listings={related} />
         </div>
       </main>
-      {!isOwn && <StickyBuyBar listing={listing} disabled={busy || !paymentOption} onAddToCart={() => addListingToCart({ paymentOption, fulfilment, quantity })} />}
+      {!isOwn && listing.type !== 'service' && <StickyBuyBar listing={listing} disabled={busy || !paymentOption} onAddToCart={() => addListingToCart({ paymentOption, fulfilment, quantity })} />}
       {reporting && <ReportForm listing={listing} onClose={() => setReporting(false)} onToast={setToast} />}
       {toast && <p role="status" aria-live="polite" className="fixed bottom-20 right-4 z-50 max-w-sm rounded-xl border border-line bg-paper px-4 py-3 text-sm shadow-card-lg sm:bottom-5">{toast}</p>}
     </div>

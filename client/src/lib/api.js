@@ -8,6 +8,7 @@ import { listingMockHandlers, listingMocksEnabled } from './listingMocks.js';
 import { marketplaceMockHandlers, marketplaceMocksEnabled } from './marketplaceMocks.js';
 import { onboardingMockHandlers, onboardingMocksEnabled } from './onboardingMocks.js';
 import { transactionPreferencesMockHandlers } from './transactionPreferencesMocks.js';
+import { serviceOrderMockHandlers, serviceOrderMocksEnabled } from './serviceOrderMocks.js';
 import { apiUrl } from './apiBase.js';
 
 let accessToken = null;
@@ -259,21 +260,21 @@ export const api = {
   }),
   getMarketplaceCart: () => marketplaceMocksEnabled
     ? marketplaceMockHandlers.getCart()
-    : request('/marketplace/me/cart', { auth: true }).then(({ items = [], ...rest }) => ({
+    : request('/cart', { auth: true }).then(({ items = [], ...rest }) => ({
       ...rest,
       items: items.map((entry) => ({ id: entry.listing?._id, type: entry.listingType })),
     })),
   addMarketplaceCartItem: async (listing, options = {}) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.addCartItem({ type: listing.type, listingId: listing.id, ...options })
-      : await request('/marketplace/me/cart', { method: 'POST', body: { listingId: listing.id, listingType: listing.type, ...options }, auth: true });
+      : await request('/cart', { method: 'POST', body: { listingId: listing.id, listingType: listing.type, ...options }, auth: true });
     notifyCartChanged();
     return result;
   },
   removeMarketplaceCartItem: async (id, type) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.removeCartItem(id)
-      : await request(`/marketplace/me/cart/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true });
+      : await request(`/cart/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true });
     notifyCartChanged();
     return result;
   },
@@ -291,6 +292,24 @@ export const api = {
   getMarketplaceOverview: () => request('/marketplace/overview'),
   getMarketplaceListing: (type, id) => request(`/marketplace/${type}/${id}`),
   directCheckout: (type, id, payload = {}) => request(`/marketplace/${type}/${id}/checkout`, { method: 'POST', body: payload, auth: true }),
+  getServiceAvailability: (id, date) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.availability(id, date)
+    : request(`/services/${encodeURIComponent(id)}/availability?date=${encodeURIComponent(date)}`),
+  createServiceOrder: (id, payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.create(id, payload)
+    : request(`/services/${encodeURIComponent(id)}/orders`, { method: 'POST', body: payload, auth: true }),
+  checkoutServiceOrder: (id) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.checkout(id)
+    : request(`/services/orders/${encodeURIComponent(id)}/checkout`, { method: 'POST', body: {}, auth: true }),
+  getMyServiceOrders: () => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.list()
+    : request('/services/orders/me', { auth: true }),
+  sendServiceOrderMessage: (id, message) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.message(id, message)
+    : request(`/services/orders/${encodeURIComponent(id)}/messages`, { method: 'POST', body: { message }, auth: true }),
+  updateServiceOrder: (id, action, payload = {}) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.update(id, action, payload)
+    : request(`/services/orders/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: payload, auth: true }),
   getListingReviews: (type, id) => request(`/marketplace/${type}/${id}/reviews`),
   getReviewEligibility: (type, id, sellerId) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.getReviewEligibility(type, id, sellerId)
@@ -298,18 +317,37 @@ export const api = {
   createListingReview: (type, id, payload, sellerId) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.createReview(type, id, sellerId, payload)
     : request(`/marketplace/${type}/${id}/reviews`, { method: 'POST', body: payload, auth: true }),
-  listServiceOffers: () => request('/service-offers', { auth: true }),
-  createServiceOffer: (payload) => request('/service-offers', { method: 'POST', body: payload, auth: true }),
-  getOfferMessages: (id) => request(`/service-offers/${id}/messages`, { auth: true }),
-  sendOfferMessage: (id, body) => request(`/service-offers/${id}/messages`, { method: 'POST', body: { body }, auth: true }),
+  listServiceOffers: () => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.listOffers()
+    : request('/service-offers', { auth: true }),
+  createServiceOffer: (payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.createOffer(payload)
+    : request('/service-offers', { method: 'POST', body: payload, auth: true }),
+  getOfferMessages: (id) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.getOfferMessages(id)
+    : request(`/service-offers/${id}/messages`, { auth: true }),
+  sendOfferMessage: (id, body) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.sendOfferMessage(id, body)
+    : request(`/service-offers/${id}/messages`, { method: 'POST', body: { body }, auth: true }),
   getNotifications: () => request('/notifications', { auth: true }),
-  counterServiceOffer: (id, payload) => request(`/service-offers/${id}/counter`, { method: 'POST', body: payload, auth: true }),
-  acceptServiceOffer: (id) => request(`/service-offers/${id}/accept`, { method: 'POST', body: {}, auth: true }),
-  rejectServiceOffer: (id) => request(`/service-offers/${id}/reject`, { method: 'POST', body: {}, auth: true }),
+  getNotificationPreferences: () => request('/notifications/preferences', { auth: true }),
+  updateNotificationPreferences: (preferences) => request('/notifications/preferences', { method: 'PATCH', body: preferences, auth: true }),
+  markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', auth: true }),
+  counterServiceOffer: (id, payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.counterOffer(id, payload)
+    : request(`/service-offers/${id}/counter`, { method: 'POST', body: payload, auth: true }),
+  acceptServiceOffer: (id) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.acceptOffer(id)
+    : request(`/service-offers/${id}/accept`, { method: 'POST', body: {}, auth: true }),
+  rejectServiceOffer: (id) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.rejectOffer(id)
+    : request(`/service-offers/${id}/reject`, { method: 'POST', body: {}, auth: true }),
   listProductOffers: () => request('/product-offers', { auth: true }),
   createProductOffer: (payload) => request('/product-offers', { method: 'POST', body: payload, auth: true }),
   respondProductOffer: (id, decision) => request(`/product-offers/${id}/respond`, { method: 'POST', body: { decision }, auth: true }),
-  getPublicSeller: (id) => request(`/marketplace/seller/${id}`),
+  getPublicSeller: (id, account = null) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.getPublicSeller(id, account)
+    : request(`/marketplace/seller/${encodeURIComponent(id)}`, { auth: Boolean(account) }),
   reportSeller: (id, reason) => request(`/marketplace/seller/${encodeURIComponent(id)}/report`, { method: 'POST', body: { reason }, auth: true }),
   previewListingPrice: (amount, discount) => {
     const params = new URLSearchParams({ amount: String(amount) });
@@ -330,7 +368,14 @@ export const api = {
   publishListing: (payload) => listingMocksEnabled
     ? listingMockHandlers.publish(payload)
     : request('/listings', { method: 'POST', body: { ...payload, status: 'live' }, auth: true }),
-  getCart: () => marketplaceMocksEnabled ? Promise.resolve(marketplaceMockHandlers.legacyCart()) : request('/marketplace/me/cart', { auth: true }),
+  getCart: () => marketplaceMocksEnabled ? Promise.resolve(marketplaceMockHandlers.legacyCart()) : request('/cart', { auth: true }),
+  patchCart: async (payload) => {
+    const result = marketplaceMocksEnabled
+      ? await marketplaceMockHandlers.patchCart(payload)
+      : await request('/cart', { method: 'PATCH', body: payload, auth: true });
+    notifyCartChanged();
+    return result;
+  },
   getBuyerOrders: () => request('/marketplace/me/orders', { auth: true }),
   getOrders: (role) => orderMocksEnabled
     ? orderMockHandlers.list(role)
@@ -346,22 +391,51 @@ export const api = {
   addCartItem: async (listingType, listingId, options = {}) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.addCartItem({ type: listingType, listingId, ...options })
-      : await request('/marketplace/me/cart', { method: 'POST', body: { listingType, listingId, ...options }, auth: true });
+      : await request('/cart', { method: 'POST', body: { listingType, listingId, ...options }, auth: true });
     notifyCartChanged();
     return result;
   },
+  reviewCart: (payload = {}) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.reviewCart(payload)
+    : request('/checkout/review', { method: 'POST', body: payload, auth: true }),
+  payCart: async (payload) => {
+    const result = marketplaceMocksEnabled
+      ? await marketplaceMockHandlers.payCart(payload)
+      : await request('/checkout/pay', { method: 'POST', body: payload, auth: true });
+    if (result.status === 'confirmed') notifyCartChanged();
+    return result;
+  },
+  getCheckoutStatus: async (reference) => {
+    const result = marketplaceMocksEnabled
+      ? await marketplaceMockHandlers.getCheckoutStatus(reference)
+      : await request(`/checkout/status/${encodeURIComponent(reference)}`, { auth: true });
+    if (result.status === 'confirmed') notifyCartChanged();
+    return result;
+  },
   checkoutCart: (payload = {}) => request('/marketplace/me/cart/checkout', { method: 'POST', body: payload, auth: true }),
+  getRecentlyViewed: () => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.getRecentlyViewed()
+    : request('/me/recently-viewed', { auth: true }),
+  trackRecentlyViewed: (listingType, listingId) => marketplaceMocksEnabled
+    ? marketplaceMockHandlers.trackRecentlyViewed(listingType, listingId)
+    : request('/me/recently-viewed', { method: 'POST', body: { listingType, listingId }, auth: true }),
+  getSimilarListings: (ids = []) => {
+    const params = new URLSearchParams({ ids: ids.join(',') });
+    return marketplaceMocksEnabled
+      ? marketplaceMockHandlers.getSimilarListings(ids)
+      : request(`/listings/similar?${params}`, { auth: true });
+  },
   setCartQuantity: async (listingType, listingId, quantity) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.setQuantity(listingType, listingId, quantity)
-      : await request(`/marketplace/me/cart/${listingType}/${listingId}`, { method: 'PATCH', body: { quantity }, auth: true });
+      : await request('/cart', { method: 'PATCH', body: { item: { listingType, listingId, quantity } }, auth: true });
     notifyCartChanged();
     return result;
   },
   removeCartItem: async (listingType, listingId) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.removeCartItem(listingId)
-      : await request(`/marketplace/me/cart/${listingType}/${listingId}`, { method: 'DELETE', auth: true });
+      : await request(`/cart/${listingType}/${listingId}`, { method: 'DELETE', auth: true });
     notifyCartChanged();
     return result;
   },
@@ -402,5 +476,6 @@ export const api = {
   getPublicConfig: () => request('/public-config'),
   getPlatformSettings: () => request('/admin/settings', { auth: true }),
   updatePlatformSettings: (payload) => request('/admin/settings', { method: 'PATCH', body: payload, auth: true }),
+  sendPromotionEmail: (payload) => request('/admin/promotions/email', { method: 'POST', body: payload, auth: true }),
   removeDemoData: () => request('/admin/demo-data', { method: 'DELETE', auth: true }),
 };

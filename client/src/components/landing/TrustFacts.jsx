@@ -2,7 +2,7 @@ import { Banknote, Clock3, ShieldCheck, UserRoundCheck } from 'lucide-react';
 
 const FACTS = [
   { Icon: Clock3, title: '72 hours', body: 'Auto-release after delivery' },
-  { Icon: ShieldCheck, title: '100% held', body: 'Payments stay in escrow until release' },
+  { Icon: ShieldCheck, title: 'Escrow held', body: 'Escrow payments stay on hold until release' },
   { Icon: UserRoundCheck, title: 'KYC checked', body: 'Every seller goes through verification' },
   { Icon: Banknote, title: 'Naira payments', body: 'Pay and get paid in ₦' },
 ];

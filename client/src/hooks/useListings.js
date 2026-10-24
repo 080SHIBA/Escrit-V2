@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
-export function useListings() {
+export function useListings({ pageSize = 6 } = {}) {
   const [listings, setListings] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -12,7 +12,7 @@ export function useListings() {
     setLoading(true);
     setError('');
     try {
-      const result = await api.getListings();
+      const result = await api.getListings({ limit: pageSize });
       setListings(result.items || []);
       setCursor(result.nextCursor || null);
     } catch {
@@ -20,11 +20,11 @@ export function useListings() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     let active = true;
-    api.getListings()
+    api.getListings({ limit: pageSize })
       .then((result) => {
         if (active) {
           setListings(result.items || []);
@@ -38,14 +38,14 @@ export function useListings() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [pageSize]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     setError('');
     try {
-      const result = await api.getListings({ cursor });
+      const result = await api.getListings({ cursor, limit: pageSize });
       setListings((current) => [...current, ...(result.items || [])]);
       setCursor(result.nextCursor || null);
     } catch {
@@ -53,7 +53,7 @@ export function useListings() {
     } finally {
       setLoadingMore(false);
     }
-  }, [cursor, loadingMore]);
+  }, [cursor, loadingMore, pageSize]);
 
   const updateListing = useCallback((id, updates) => {
     setListings((current) => current.map((listing) => listing.id === id ? { ...listing, ...updates } : listing));

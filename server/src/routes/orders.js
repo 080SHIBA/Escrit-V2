@@ -10,6 +10,7 @@ import { User } from '../models/User.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
 import { raiseDispute, releaseOnBuyerConfirmation } from '../services/escrow.js';
 import { deliveryReleaseTime } from '../../../shared/orderState.js';
+import { notifyDisputeRaised } from '../services/notificationEvents.js';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
@@ -130,9 +131,8 @@ ordersRouter.post('/:id/confirm', asyncHandler(async (req, res) => {
 
 ordersRouter.post('/:id/dispute', validate(disputeSchema), asyncHandler(async (req, res) => {
   const transaction = await loadAuthorizedOrder(req, 'buy');
-  await raiseDispute(transaction, req.body.reason);
-  transaction.status = TX_STATUS.DISPUTED;
-  transaction.disputeReason = req.body.reason;
+  const disputed = await raiseDispute(transaction, req.body.reason);
   const seller = await User.findById(transaction.linkId.sellerId).select('displayName businessName');
-  res.json({ order: toOrder(transaction, 'buy', seller?.displayName || seller?.businessName) });
+  await notifyDisputeRaised({ io: req.app.get('io'), transaction: disputed });
+  res.json({ order: toOrder(disputed, 'buy', seller?.displayName || seller?.businessName) });
 }));

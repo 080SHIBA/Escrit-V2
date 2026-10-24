@@ -17,4 +17,8 @@ export default defineConfig({
       '/socket.io': { target: 'http://localhost:4000', ws: true },
     },
   },
+  // vite.config.js
+  build: {
+    chunkSizeWarningLimit: 1000, // raises limit to 1000 kB (1 MB)
+  },
 });

@@ -28,6 +28,15 @@ import MobileMenu from './MobileMenu.jsx';
 import LandingFooter from './landing/LandingFooter.jsx';
 import { api, getAccessToken, getRealtimeUrl } from '../lib/api.js';
 import { marketplaceMocksEnabled } from '../lib/marketplaceMocks.js';
+import {
+  AdminCategoriesIcon,
+  AdminComplaintsIcon,
+  AdminDisputesIcon,
+  AdminListingsIcon,
+  AdminSettingsIcon,
+  TransactionPreferencesIcon,
+  KycPreviewIcon,
+} from './admin/AdminNavIcon.jsx';
 
 // Icon-over-label item for the signed-in desktop nav. `tourId` lets a
 // walkthrough step point at this item.
@@ -109,13 +118,18 @@ export default function Layout({ children }) {
   const isHome = location.pathname === '/';
   const isDashboard = location.pathname === '/dashboard';
   const isListingDetail = location.pathname.startsWith('/listing/');
+  const isAdminPage = location.pathname.startsWith('/admin/');
   const isLoginPage = location.pathname === '/login';
   const isOnboarding = location.pathname === '/onboarding';
   const isAuthRefresh = location.pathname === '/sign-in' || location.pathname === '/get-started' || isOnboarding;
   const isAccountAuthPage = isLoginPage || location.pathname === '/register' || isAuthRefresh;
+  const isMarketplacePage = location.pathname === '/marketplace' || location.pathname.startsWith('/marketplace/');
+  const isMarketplaceCategoryPage = ['/marketplace/products', '/marketplace/services', '/marketplace/courses'].includes(location.pathname);
+  const isStorefrontListPage = location.pathname === '/account/storefront'
+    && new URLSearchParams(location.search).get('tab') === 'list';
   const isPublicLanding =
     isHome ||
-    location.pathname === '/marketplace' ||
+    isMarketplacePage ||
     isLoginPage ||
     location.pathname === '/register' || isAuthRefresh;
   const isAccountPage = location.pathname === '/login' || location.pathname === '/register' || isAuthRefresh;
@@ -188,7 +202,7 @@ export default function Layout({ children }) {
   const sellerItems = [
     { key: 'dashboard', to: '/dashboard', label: 'Dashboard', Icon: DashboardIcon, primary: true, active: location.pathname.startsWith('/dashboard') && location.pathname !== '/dashboard/bank' },
     { key: 'storefront', to: '/account/storefront', label: 'My storefront', Icon: Store, primary: true, active: location.pathname === '/account/storefront' },
-    { key: 'marketplace', to: '/marketplace', label: 'Marketplace', Icon: ShopIcon, primary: true, active: location.pathname === '/marketplace' },
+    { key: 'marketplace', to: '/marketplace', label: 'Marketplace', Icon: ShopIcon, primary: true, active: isMarketplacePage },
     {
       key: 'bank',
       to: '/dashboard/bank',
@@ -200,11 +214,12 @@ export default function Layout({ children }) {
     },
     { key: 'favorites', to: '/account/favorites', label: 'Saved listings', Icon: HeartIcon, active: location.pathname === '/account/favorites' },
     { key: 'orders', to: '/account/orders', label: 'My orders', Icon: MyOrdersIcon, active: location.pathname === '/account/orders' },
+    { key: 'service-orders', to: '/account/service-orders', label: 'Service orders', Icon: MyOrdersIcon, active: location.pathname.startsWith('/account/service-orders') },
     { key: 'offers', to: '/account/offers', label: 'Service offers & chat', Icon: HandshakeIcon, active: location.pathname.startsWith('/account/offers') },
     { key: 'notifications', to: '/account/notifications', label: 'Notifications', Icon: Bell, active: location.pathname === '/account/notifications', badge: notificationCount || undefined },
     { key: 'price-offers', to: '/account/price-offers', label: 'Product price offers', Icon: PriceOffersIcon, active: location.pathname === '/account/price-offers' },
     { key: 'credits', to: '/account/credits', label: 'Promotion credits', Icon: PromotionCreditsIcon, active: location.pathname === '/account/credits' },
-    { key: 'transaction-preferences', to: '/account/transaction-preferences', label: 'Transaction preferences', Icon: ShieldCheckIcon, active: location.pathname === '/account/transaction-preferences' },
+    { key: 'transaction-preferences', to: '/account/transaction-preferences', label: 'Transaction preferences', Icon: TransactionPreferencesIcon, active: location.pathname === '/account/transaction-preferences' },
     { key: 'profile', to: '/settings', label: 'Profile settings', Icon: IdentityVerificationIcon, active: location.pathname === '/settings' },
     ...(seller?.isAdmin
       ? [
@@ -212,15 +227,15 @@ export default function Layout({ children }) {
             key: 'disputes',
             to: '/admin/disputes',
             label: 'Disputes',
-            Icon: AlertIcon,
+            Icon: AdminDisputesIcon,
             active: location.pathname === '/admin/disputes',
             title: 'Admin: dispute resolution',
           },
-          { key: 'complaints', to: '/admin/complaints', label: 'Buyer complaints', Icon: AlertIcon, active: location.pathname === '/admin/complaints' },
-          { key: 'kyc-review', to: '/admin/kyc', label: 'KYC review', Icon: ShieldCheckIcon, active: location.pathname === '/admin/kyc' },
-          { key: 'listing-review', to: '/admin/listings', label: 'Listing review', Icon: CompassIcon, active: location.pathname === '/admin/listings' },
-          { key: 'category-review', to: '/admin/categories', label: 'Category requests', Icon: CompassIcon, active: location.pathname === '/admin/categories' },
-          { key: 'platform-settings', to: '/admin/settings', label: 'Platform settings', Icon: LinkIcon, active: location.pathname === '/admin/settings' },
+          { key: 'complaints', to: '/admin/complaints', label: 'Buyer complaints', Icon: AdminComplaintsIcon, active: location.pathname === '/admin/complaints' },
+          { key: 'kyc-review', to: '/admin/kyc', label: 'KYC review', Icon: KycPreviewIcon, active: location.pathname === '/admin/kyc' },
+          { key: 'listing-review', to: '/admin/listings', label: 'Listing review', Icon: AdminListingsIcon, active: location.pathname === '/admin/listings' },
+          { key: 'category-review', to: '/admin/categories', label: 'Category requests', Icon: AdminCategoriesIcon, active: location.pathname === '/admin/categories' },
+          { key: 'platform-settings', to: '/admin/settings', label: 'Platform settings', Icon: AdminSettingsIcon, active: location.pathname === '/admin/settings' },
           ...(seller?.isOwner ? [{ key: 'roles', to: '/admin/users', label: 'Manage admin roles', Icon: ShieldCheckIcon, active: location.pathname === '/admin/users' }] : []),
         ]
       : []),
@@ -257,7 +272,7 @@ export default function Layout({ children }) {
       <span className="font-display text-xl tracking-tight">Escrit</span>
       {!isAuthed && (
         <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-forest-800 dark:text-seal border border-line px-2.5 py-1 rounded-full">
-          <LockIcon width={11} height={11} /> marketplace · escrow protected
+          <LockIcon width={11} height={11} /> marketplace · escrow optional by listing
         </span>
       )}
       {isAuthed && seller && !isBuyerSide && (
@@ -405,7 +420,7 @@ export default function Layout({ children }) {
             {!isAuthed && !isChecking && !isBuyerSide && (
               <nav className="ml-auto flex items-center gap-1" aria-label="Main">
                 {!isPublicLanding && <Link to="/marketplace" className={TEXT_LINK}>Marketplace</Link>}
-                {(!isPublicLanding || location.pathname === '/marketplace') && <NavItem to="/account/cart" icon={<CartIcon width={18} height={18} />} label="Cart" badge={cartCount || undefined} title="Shopping cart" />}
+                {(!isPublicLanding || isMarketplacePage) && <NavItem to="/cart" icon={<CartIcon width={18} height={18} />} label="Cart" badge={cartCount || undefined} title="Shopping cart" />}
                 <Link
                   to="/sign-in"
                   className={`${TEXT_LINK} ml-2 border border-line-strong rounded-md`}
@@ -424,7 +439,7 @@ export default function Layout({ children }) {
             {isAuthed && !isBuyerSide && (
               <div className="ml-auto flex items-center gap-2">
                 <Link
-                  to="/account/cart"
+                  to="/cart"
                   aria-label={`Shopping cart, ${cartCount} items`}
                   title="Shopping cart"
                   className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 transition-colors hover:bg-paper-2 hover:text-ink"
@@ -450,7 +465,7 @@ export default function Layout({ children }) {
           {isAuthed && !isBuyerSide && (
             <div className="ml-auto flex items-center gap-1 md:hidden">
               <Link
-                to="/account/cart"
+                to="/cart"
                 aria-label={`Shopping cart, ${cartCount} items`}
                 title="Shopping cart"
                 className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 transition-colors hover:bg-paper-2 hover:text-ink"
@@ -471,8 +486,8 @@ export default function Layout({ children }) {
             </div>
           )}
 
-          {(!isPublicLanding || location.pathname === '/marketplace') && !isChecking && !isAuthed && <Link to="/account/cart" aria-label={`Shopping cart, ${cartCount} items`} className="relative flex items-center gap-1 text-sm text-ink/70 md:hidden"><CartIcon width={20} height={20} /><span>Cart</span>{cartCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}</Link>}
-          {!isChecking && isAuthed && isBuyerSide && <Link to="/account/cart" aria-label={`Shopping cart, ${cartCount} items`} className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 hover:bg-line/40"><CartIcon width={20} height={20} />{cartCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}</Link>}
+          {(!isPublicLanding || location.pathname === '/marketplace') && !isChecking && !isAuthed && <Link to="/cart" aria-label={`Shopping cart, ${cartCount} items`} className="relative flex items-center gap-1 text-sm text-ink/70 md:hidden"><CartIcon width={20} height={20} /><span>Cart</span>{cartCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}</Link>}
+          {!isChecking && isAuthed && isBuyerSide && <Link to="/cart" aria-label={`Shopping cart, ${cartCount} items`} className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 hover:bg-line/40"><CartIcon width={20} height={20} />{cartCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}</Link>}
 
         </div>
 
@@ -513,7 +528,9 @@ export default function Layout({ children }) {
               ? ''
               : isListingDetail
                 ? 'max-w-7xl px-0 py-8 mx-auto'
-                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : 'max-w-2xl'}`
+                : isAdminPage
+                  ? 'max-w-none px-4 sm:px-6 py-8 mx-auto'
+                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' || location.pathname === '/cart' || isMarketplaceCategoryPage ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : isStorefrontListPage ? 'max-w-2xl lg:max-w-none' : 'max-w-2xl'}`
         } ${isAuthed && !isBuyerSide && !isOnboarding ? 'pb-24 md:pb-8' : ''}`}
       >
         {children}

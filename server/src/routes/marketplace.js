@@ -21,6 +21,9 @@ import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
 import { ListingDraft } from '../models/ListingDraft.js';
 import { SellerReport } from '../models/SellerReport.js';
 import { publicSellerName, sanitizePublicSeller } from '../utils/publicSellerName.js';
+import { notifyUser } from '../services/notifications.js';
+import { notifyListingSubmitted } from '../services/notificationEvents.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS } from '../../../shared/releaseConditions.js';
 
 export const marketplaceRouter = Router();
 export const listingWorkflowRouter = Router();
@@ -46,14 +49,14 @@ function transactionPreferencesFor(user) {
   };
 }
 
-function effectivePaymentOptions(listing, seller) {
+export function effectivePaymentOptions(listing, seller) {
   const defaults = transactionPreferencesFor(seller);
   return listing.overridesDefault
     ? listing.paymentOptions || PAYMENT_OPTIONS[defaults.paymentDefault]
     : PAYMENT_OPTIONS[defaults.paymentDefault] || PAYMENT_OPTIONS.both;
 }
 
-function effectiveFulfilment(listing, seller) {
+export function effectiveFulfilment(listing, seller) {
   if (listing.fulfillmentOverridesDefault) return listing.fulfillmentMethod || listing.fulfillment || 'delivery';
   const defaultValue = transactionPreferencesFor(seller).fulfilmentDefault;
   return defaultValue === 'both' ? 'delivery-or-pickup' : defaultValue;
@@ -64,9 +67,9 @@ function paymentOptionLabel(options) {
   return options.escrow ? 'Escrow only' : 'No escrow';
 }
 
-function transactionTermsSnapshot(listing, options, checkoutMode, fulfilment) {
+export function transactionTermsSnapshot(listing, options, checkoutMode, fulfilment, releaseWindowHours) {
   const paymentTerms = checkoutMode === 'escrow'
-    ? 'Payment method: Escrit escrow. Funds are held until the buyer confirms completion or the order release window ends.'
+    ? `Payment method: Escrit escrow. Funds are held until the buyer confirms completion or the ${releaseWindowHours || DEFAULT_RELEASE_WINDOW_HOURS}-hour order release window ends.`
     : 'Payment method: direct payment without escrow. Escrit cannot hold or recover this money, but buyers can still report problems.';
   const offerTerms = options.escrow && options.direct
     ? 'This listing offers both payment options; the buyer selected one at checkout.'
@@ -91,7 +94,7 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function publicListing(item, type) {
+export function publicListing(item, type) {
   const seller = item.seller;
   if (seller) sanitizePublicSeller(seller);
   const paymentOptions = seller ? effectivePaymentOptions(item, seller) : item.paymentOptions || PAYMENT_OPTIONS.both;
@@ -118,17 +121,17 @@ function publicListing(item, type) {
   };
 }
 
-async function loadListing(listingType, listingId) {
+export async function loadListing(listingType, listingId) {
   const config = TYPE_CONFIG[listingType];
   if (!config) throw new AppError(400, 'Unsupported listing type');
   const item = await config.Model.findOne({ _id: listingId, isActive: true, isVerified: true })
-    .populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
+    .populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed transactionPreferences onboarding.fulfilmentDefault kycStatus averageRating reviewCount');
   if (item?.seller) sanitizePublicSeller(item.seller);
   if (!item) throw new AppError(404, 'Listing is no longer available');
   return item;
 }
 
-async function populateSavedItems(entries) {
+export async function populateSavedItems(entries) {
   const listings = await Promise.all(entries.map(async (entry) => {
     try {
       const listing = await loadListing(entry.listingType, entry.listingId);
@@ -147,6 +150,7 @@ async function populateSavedItems(entries) {
     listing: {
       ...listing.toObject(),
       buyerPriceKobo: priceByLinkId.get(String(listing.escrowLinkId)) ?? null,
+      checkoutBasePriceKobo: links.find((link) => String(link._id) === String(listing.escrowLinkId))?.checkoutBasePriceKobo ?? null,
       paymentOptions: effectivePaymentOptions(listing, listing.seller),
       paymentOptionLabel: paymentOptionLabel(effectivePaymentOptions(listing, listing.seller)),
       fulfillmentMethod: entry.listingType === 'product'
@@ -391,6 +395,9 @@ marketplaceRouter.post('/me/cart/checkout', requireAuth, validate(cartCheckoutSc
   if (!buyer.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
   const items = await populateSavedItems(buyer.cartItems);
   if (!items.length) throw new AppError(409, 'Your cart is empty');
+  if (items.some((entry) => entry.listingType === 'service')) {
+    throw new AppError(409, 'Services have their own booking and order flow and cannot be checked out from the product cart.');
+  }
   const checkoutMode = req.body.checkoutMode;
   if (items.some((entry) => !entry.listing.paymentOptions[checkoutMode === 'escrow' ? 'escrow' : 'direct'])) {
     throw new AppError(409, 'The selected payment option is not available for every listing in your cart.');
@@ -464,6 +471,7 @@ marketplaceRouter.post('/me/cart/checkout', requireAuth, validate(cartCheckoutSc
 
 marketplaceRouter.post('/me/cart', requireAuth, validate(listingReferenceSchema), asyncHandler(async (req, res) => {
   const { listingType, listingId, paymentOption, fulfilment } = req.body;
+  if (listingType === 'service') throw new AppError(409, 'Services have their own booking flow and cannot be added to the cart.');
   const listing = await loadListing(listingType, listingId);
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
@@ -525,12 +533,24 @@ marketplaceRouter.get('/me/favorites', requireAuth, asyncHandler(async (req, res
 
 marketplaceRouter.post('/me/favorites', requireAuth, validate(listingReferenceSchema), asyncHandler(async (req, res) => {
   const { listingType, listingId } = req.body;
-  await loadListing(listingType, listingId);
+  const listing = await loadListing(listingType, listingId);
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
   const exists = buyer.favoriteListings.some((entry) => entry.listingType === listingType && String(entry.listingId) === listingId);
-  if (!exists) buyer.favoriteListings.push({ listingType, listingId });
+  if (!exists) {
+    buyer.favoriteListings.push({ listingType, listingId });
+  }
   await buyer.save();
+  if (!exists) {
+    await notifyUser({
+      io: req.app.get('io'),
+      recipientId: buyer._id,
+      type: 'listing_saved',
+      title: 'Listing saved',
+      message: `“${listing.title}” was added to your saved listings.`,
+      href: '/account/favorites',
+    });
+  }
   res.json({ items: await populateSavedItems(buyer.favoriteListings) });
 }));
 
@@ -583,6 +603,24 @@ const createListingSchema = Joi.object({
   refundable: Joi.boolean().default(false),
   refundConditions: Joi.string().allow('').default(''),
   basePrice: Joi.number().min(0).default(0),
+  serviceModel: Joi.string().valid('appointment', 'fixed_scope', 'custom_quote').default('appointment'),
+  packages: Joi.array().items(Joi.object({
+    key: Joi.string().trim().pattern(/^[a-z0-9_-]+$/i).max(48).required(),
+    name: Joi.string().trim().min(1).max(80).required(),
+    description: Joi.string().trim().max(500).allow('').default(''),
+    priceNaira: Joi.number().min(100).required(),
+    deliveryDays: Joi.number().integer().min(1).max(365).default(7),
+    revisionCount: Joi.number().integer().min(0).max(20).default(0),
+    deliverables: Joi.array().items(Joi.string().trim().max(160)).max(30).default([]),
+  })).max(5).default([]),
+  addOns: Joi.array().items(Joi.object({
+    key: Joi.string().trim().pattern(/^[a-z0-9_-]+$/i).max(48).required(),
+    name: Joi.string().trim().min(1).max(80).required(),
+    description: Joi.string().trim().max(300).allow('').default(''),
+    priceNaira: Joi.number().min(100).required(),
+  })).max(20).default([]),
+  maxRevisions: Joi.number().integer().min(0).max(20).default(1),
+  reservationMinutes: Joi.number().integer().min(5).max(1440).default(30),
   pricingUnit: Joi.string().default('project'),
   estimatedTime: Joi.string().default('1-2 weeks'),
   location: Joi.string().default('Remote'),
@@ -623,7 +661,7 @@ async function ensureCategory(type, name, requestedBy) {
   return { name: created.name, approved: false };
 }
 
-async function createMarketplaceListing(type, body, sellerId) {
+async function createMarketplaceListing(type, body, sellerId, io) {
   const config = TYPE_CONFIG[type];
   if (!config) throw new AppError(400, 'Unsupported listing type');
   const seller = await User.findById(sellerId);
@@ -639,8 +677,16 @@ async function createMarketplaceListing(type, body, sellerId) {
   const fulfillmentMethod = body.fulfillmentOverridesDefault
     ? body.fulfillmentMethod
     : effectiveFulfilment({}, seller);
-  const priceNaira = type === 'service' ? Number(body.basePrice || 0) : Number(body.price || 0);
-  if (priceNaira < 100) throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more.');
+  const servicePriceNaira = body.serviceModel === 'fixed_scope'
+    ? Math.min(...(body.packages || []).map((item) => Number(item.priceNaira)), Infinity)
+    : Number(body.basePrice || 0);
+  const priceNaira = type === 'service' ? servicePriceNaira : Number(body.price || 0);
+  if (priceNaira < 100 && !(type === 'service' && body.serviceModel === 'custom_quote')) {
+    throw new AppError(422, 'Marketplace listings must be priced at ₦100 or more.');
+  }
+  if (type === 'service' && body.serviceModel === 'fixed_scope' && (!body.packages?.length || body.packages.length > 5)) {
+    throw new AppError(422, 'Add at least one priced package for fixed-scope services.');
+  }
 
   const categoryResult = await ensureCategory(type, body.category, seller._id);
   const payload = {
@@ -672,12 +718,21 @@ async function createMarketplaceListing(type, body, sellerId) {
       : [{ title: 'Course overview', description: body.description || '', videoUrl: '' }];
     if (body.refundable && !body.refundConditions) throw new AppError(400, 'Refund conditions are required when refundable is true');
   }
-  if (type === 'service') payload.basePrice = Number(body.basePrice || 0);
+  if (type === 'service') {
+    payload.basePrice = body.serviceModel === 'fixed_scope'
+      ? Math.min(...body.packages.map((item) => Number(item.priceNaira)))
+      : Number(body.basePrice || 0);
+    payload.serviceModel = body.serviceModel || 'appointment';
+    payload.packages = body.packages || [];
+    payload.addOns = body.addOns || [];
+    payload.maxRevisions = body.maxRevisions;
+    payload.reservationMinutes = body.reservationMinutes;
+  }
 
   const item = await config.Model.create(payload);
   let link;
   try {
-    link = await Link.create({
+    if (!(type === 'service' && item.serviceModel === 'custom_quote')) link = await Link.create({
       sellerId: seller._id,
       itemName: item.title,
       itemDescription: type === 'course' && item.refundable
@@ -693,8 +748,10 @@ async function createMarketplaceListing(type, body, sellerId) {
       checkoutPriceKobo: null,
       checkoutBasePriceKobo: null,
     });
-    item.escrowLinkId = link._id;
-    await item.save();
+    if (link) {
+      item.escrowLinkId = link._id;
+      await item.save();
+    }
   } catch (error) {
     await Promise.all([
       config.Model.deleteOne({ _id: item._id }),
@@ -702,6 +759,7 @@ async function createMarketplaceListing(type, body, sellerId) {
     ]);
     throw error;
   }
+  await notifyListingSubmitted({ io, seller, listing: item, listingType: type });
   return item;
 }
 
@@ -732,7 +790,7 @@ const listingDraftSchema = Joi.object({
 function validatePublishableListing(listing) {
   if (listing.title.trim().length < 5) throw new AppError(400, 'Add a title with at least 5 characters.');
   if (!listing.category) throw new AppError(400, 'Choose a category.');
-  if (listing.price <= 0) throw new AppError(400, 'Enter a price above zero.');
+  if (listing.price <= 0 && !(listing.type === 'service' && listing.serviceModel === 'custom_quote')) throw new AppError(400, 'Enter a price above zero.');
   if (listing.overridesDefault && !listing.paymentOptions.escrow && !listing.paymentOptions.direct) {
     throw new AppError(400, 'Choose at least one payment option.');
   }
@@ -771,7 +829,14 @@ function marketplacePayload(listing) {
     };
   }
   if (listing.type === 'service') {
-    return { ...common, basePrice: listing.price, estimatedTime: listing.deliveryTime };
+    return {
+      ...common,
+      basePrice: listing.price,
+      estimatedTime: listing.deliveryTime,
+      serviceModel: listing.serviceModel || 'appointment',
+      packages: listing.packages || [],
+      addOns: listing.addOns || [],
+    };
   }
   return {
     ...common,
@@ -912,13 +977,20 @@ async function publicListingDetail(item, type) {
     };
   }
   return {
-    ...common,
-    basePrice: item.basePrice,
+  ...common,
+  basePrice: item.basePrice,
+  serviceModel: item.serviceModel || 'appointment',
+  packages: item.packages || [],
+  addOns: item.addOns || [],
     pricingUnit: item.pricingUnit,
     deliveryTime: item.estimatedTime,
     estimatedTime: item.estimatedTime,
     coordination: item.deliveryMode === 'in-person' ? 'In person' : item.deliveryMode === 'hybrid' ? 'Remote or in person' : 'Remote',
-    scheduling: 'Timing agreed in Escrit chat',
+    scheduling: item.serviceModel === 'appointment'
+      ? 'Choose an available appointment time; the provider confirms the request before payment.'
+      : item.serviceModel === 'custom_quote'
+        ? 'Agree scope, price and timing in Escrit chat before accepting a proposal.'
+        : 'Choose the listed package and review its saved scope before payment.',
     deliveryMode: item.deliveryMode,
     location: item.location,
     durationMinutes: item.durationMinutes,
@@ -928,11 +1000,11 @@ async function publicListingDetail(item, type) {
     included: item.deliverables || [],
     deliverables: item.deliverables || [],
     requirements: item.requirements || [],
-    howItWorks: [
-      'Agree the service scope and timing with the seller in Escrit chat.',
-      'The seller completes the agreed work.',
-      'Confirm completion if you selected escrow.',
-    ],
+    howItWorks: item.serviceModel === 'fixed_scope'
+      ? ['Choose a package and any extras.', 'Review the scope and terms before payment.', 'The seller submits the agreed deliverables for your review.']
+      : item.serviceModel === 'custom_quote'
+        ? ['Describe the work in an Escrit conversation.', 'Agree the scope, timing and price before accepting the proposal.', 'The accepted terms are saved with the order.']
+        : ['Choose an available appointment time.', 'The provider confirms your request before payment.', 'For escrow orders, confirm completion after the appointment.'],
     cancellationPolicy: item.cancellationPolicy,
     cancellationTerms: item.cancellationTerms,
     reschedulePolicy: item.reschedulePolicy,
@@ -1022,7 +1094,7 @@ listingWorkflowRouter.post('/', asyncHandler(async (req, res) => {
     return res.status(200).json({ draft });
   }
   validatePublishableListing(value);
-  const item = await createMarketplaceListing(value.type, marketplacePayload(value), req.sellerId);
+  const item = await createMarketplaceListing(value.type, marketplacePayload(value), req.sellerId, req.app.get('io'));
   await ListingDraft.deleteOne({ seller: req.sellerId });
   res.status(201).json({ item, listingType: value.type });
 }));
@@ -1196,6 +1268,7 @@ const directCheckoutSchema = Joi.object({
 
 marketplaceRouter.post('/:type/:id/checkout', requireAuth, validate(directCheckoutSchema), asyncHandler(async (req, res) => {
   const listingType = req.params.type;
+  if (listingType === 'service') throw new AppError(409, 'Use the service booking or quote flow to create a service order.');
   const config = TYPE_CONFIG[listingType];
   if (!config) throw new AppError(400, 'Unsupported listing type');
   const listing = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true });
@@ -1324,6 +1397,6 @@ marketplaceRouter.post('/:type/:id/reviews', requireAuth, validate(reviewSchema)
 }));
 
 marketplaceRouter.post('/:type', requireAuth, validate(createListingSchema), asyncHandler(async (req, res) => {
-  const item = await createMarketplaceListing(req.params.type, req.body, req.sellerId);
+  const item = await createMarketplaceListing(req.params.type, req.body, req.sellerId, req.app.get('io'));
   res.status(201).json({ item });
 }));

@@ -30,7 +30,7 @@ export default function BuyerProtection() {
           <p className="landing-overline">Before you pay</p>
           <h3 id="terms-card-title">Transaction terms at a glance</h3>
           <dl>
-            <div><dt>Payment</dt><dd>Held by Escrit</dd></div>
+            <div><dt>Payment</dt><dd>If escrow is selected: held by Escrit</dd></div>
             <div><dt>Delivery</dt><dd>Recorded against the agreement</dd></div>
             <div><dt>Confirmation</dt><dd>Buyer confirms or disputes</dd></div>
             <div><dt>Release</dt><dd>After confirmation or 72 hours after delivery</dd></div>

@@ -13,6 +13,37 @@ export function createLivenessState() {
   };
 }
 
+export function isFaceClearForCapture(landmarks, yaw, neutralYaw) {
+  if (!landmarks?.length || !Number.isFinite(yaw) || !Number.isFinite(neutralYaw)) return false;
+
+  const xs = landmarks.map(({ x }) => x);
+  const ys = landmarks.map(({ y }) => y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  return (
+    minX >= 0.27 &&
+    maxX <= 0.73 &&
+    minY >= 0.06 &&
+    maxY <= 0.94 &&
+    width >= 0.2 &&
+    width <= 0.46 &&
+    height >= 0.3 &&
+    height <= 0.88 &&
+    centerX >= 0.38 &&
+    centerX <= 0.62 &&
+    centerY >= 0.3 &&
+    centerY <= 0.7 &&
+    Math.abs(yaw - neutralYaw) <= 0.14
+  );
+}
+
 export function updateLivenessState(state, { faceDetected, blinkScore = 0, yaw = null }) {
   if (!faceDetected) {
     return state.faceDetected ? { ...state, faceDetected: false } : state;

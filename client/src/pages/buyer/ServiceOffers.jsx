@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { getAccessToken, getRealtimeUrl, api } from '../../lib/api.js';
+import { serviceOrderMocksEnabled } from '../../lib/serviceOrderMocks.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { HandshakeIcon } from '../../components/icons.jsx';
+
+const participantId = (participant) => String(participant?._id || participant?.id || participant || '');
 
 export default function ServiceOffers() {
   const { offerId } = useParams();
@@ -20,6 +23,7 @@ export default function ServiceOffers() {
   const [busy, setBusy] = useState(false);
   const socketRef = useRef(null);
   const myId = String(seller?.id || seller?._id || '');
+  const isBuyer = (currentOffer) => serviceOrderMocksEnabled || participantId(currentOffer?.buyerId) === myId;
   usePageTitle(offerId ? 'Service conversation' : 'Service offers and chats');
 
   useEffect(() => {
@@ -42,6 +46,7 @@ export default function ServiceOffers() {
       })
       .catch((err) => active && setError(err.message || 'Unable to load this conversation.'));
 
+    if (serviceOrderMocksEnabled) return () => { active = false; };
     const socket = io(getRealtimeUrl(), { auth: { accessToken: getAccessToken() } });
     socketRef.current = socket;
     socket.on('connect', () => socket.emit('conversation:join', offerId, (result) => result?.ok && setOnline(result.otherOnline)));
@@ -95,7 +100,17 @@ export default function ServiceOffers() {
       if (action === 'counter') await api.counterServiceOffer(offerId, payload);
       else if (action === 'accept') {
         const result = await api.acceptServiceOffer(offerId);
-        if (String(offer?.buyerId) === myId) window.location.assign(`/r/${result.checkoutLinkId}`);
+        if (isBuyer(offer)) {
+          if (result.orderId) {
+            if (serviceOrderMocksEnabled) {
+              await refreshThread();
+              setError('Payment is disabled in local service-order mock mode. The accepted quote is saved in Service orders.');
+              return;
+            }
+            const checkout = await api.checkoutServiceOrder(result.orderId);
+            window.location.assign(checkout.authorizationUrl);
+          } else window.location.assign(`/r/${result.checkoutLinkId}`);
+        }
       } else await api.rejectServiceOffer(offerId);
       await refreshThread();
       const { offers: updatedOffers } = await api.listServiceOffers();
@@ -107,9 +122,9 @@ export default function ServiceOffers() {
     }
   }
 
-  const canCounter = offer?.status === 'PROPOSED' && String(offer.sellerId) === myId && offer.counterCount === 0;
-  const canAccept = (offer?.status === 'PROPOSED' && String(offer.sellerId) === myId) || (offer?.status === 'COUNTERED' && String(offer.buyerId) === myId);
-  const canReject = (offer?.status === 'PROPOSED' && String(offer.sellerId) === myId) || (offer?.status === 'COUNTERED' && String(offer.buyerId) === myId);
+  const canCounter = offer?.status === 'PROPOSED' && participantId(offer.sellerId) === myId && offer.counterCount === 0;
+  const canAccept = (offer?.status === 'PROPOSED' && participantId(offer.sellerId) === myId) || (offer?.status === 'COUNTERED' && isBuyer(offer));
+  const canReject = (offer?.status === 'PROPOSED' && participantId(offer.sellerId) === myId) || (offer?.status === 'COUNTERED' && isBuyer(offer));
 
   if (!offerId) {
     return (
@@ -123,7 +138,7 @@ export default function ServiceOffers() {
         {offers === null && !error && <p className="py-8 text-sm text-ink/55">Loading conversations…</p>}
         <ul className="mt-4 divide-y divide-line">
           {offers?.map((entry) => {
-            const otherParty = String(entry.buyerId?._id) === myId ? entry.sellerId : entry.buyerId;
+            const otherParty = participantId(entry.buyerId) === myId || serviceOrderMocksEnabled ? entry.sellerId : entry.buyerId;
             return <li key={entry._id}>
               <Link to={`/account/offers/${entry._id}`} className="flex flex-wrap items-center justify-between gap-3 py-4 hover:text-ink">
                 <HandshakeIcon width={22} height={22} className="mr-1" />
@@ -150,7 +165,7 @@ export default function ServiceOffers() {
       <div className="mt-5 flex items-center gap-2 text-xs text-ink/55"><span className={`h-2 w-2 rounded-full ${online ? 'bg-released' : 'bg-line-strong'}`} />{online ? 'Other party online' : 'Other party offline'}{typing && <span>· typing…</span>}</div>
       <ol aria-label="Conversation" className="mt-3 max-h-[48vh] min-h-64 space-y-3 overflow-y-auto border-y border-line py-4">
         {messages.map((message) => {
-          const mine = String(message.senderId) === myId;
+          const mine = serviceOrderMocksEnabled || String(message.senderId) === myId;
           return <li key={message._id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
             <article className={`max-w-[85%] rounded-lg border px-3 py-2.5 ${mine ? 'border-ink/10 bg-ink/5' : 'border-line bg-paper'}`}>
               {message.type === 'offer' ? <OfferMessage message={message} /> : <p className="whitespace-pre-wrap break-words text-sm">{message.body}</p>}
@@ -166,7 +181,19 @@ export default function ServiceOffers() {
         {canAccept && <button disabled={busy} onClick={() => act('accept')} className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper disabled:opacity-50">Accept offer</button>}
         {canReject && <button disabled={busy} onClick={() => act('reject')} className="rounded-lg border border-dispute/50 px-4 py-2 text-sm text-dispute disabled:opacity-50">Decline</button>}
       </div>}
-      {offer.status === 'ACCEPTED' && String(offer.buyerId) === myId && offer.linkId && <Link to={`/r/${offer.linkId}`} className="mt-4 inline-flex rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper">Buy with escrow</Link>}
+      {offer.status === 'ACCEPTED' && isBuyer(offer) && offer.acceptedOrderId && <button type="button" onClick={async () => {
+        setBusy(true);
+        setError('');
+        try {
+          const checkout = await api.checkoutServiceOrder(offer.acceptedOrderId);
+          window.location.assign(checkout.authorizationUrl);
+        } catch (err) {
+          setError(err.message || 'Could not start service checkout.');
+        } finally {
+          setBusy(false);
+        }
+      }} disabled={busy} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper disabled:opacity-50">Continue to payment</button>}
+      {offer.status === 'ACCEPTED' && isBuyer(offer) && offer.linkId && <Link to={`/r/${offer.linkId}`} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-ink px-4 py-3 text-sm font-medium text-paper">Continue to payment</Link>}
       <form onSubmit={sendMessage} className="mt-4 flex items-end gap-2 border-t border-line pt-4">
         <label className="min-w-0 flex-1 text-xs text-ink/55">Message
           <textarea value={draft} onChange={(event) => { setDraft(event.target.value); socketRef.current?.emit('conversation:typing', { offerId, typing: Boolean(event.target.value) }); }} rows={2} maxLength={2000} className="mt-1 w-full border border-line bg-input px-3 py-2 text-sm" placeholder="Discuss scope, timing, and details" />

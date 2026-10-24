@@ -117,3 +117,34 @@ export async function sendMessageNotificationEmail(to, { senderName, serviceName
     devFallbackValue: 'New message (message content omitted)',
   });
 }
+
+export async function sendImportantNotificationEmail(to, { subject, title, message, href }) {
+  await send({
+    to,
+    subject,
+    html: `
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <p><a href="${escapeHtml(href)}">Open Escrit</a></p>
+      <p>This is an important account update from Escrit.</p>
+    `,
+    devFallbackLabel: 'Important notification',
+    devFallbackValue: title,
+  });
+}
+
+export async function sendPromotionEmail(to, { subject, title, message, href }) {
+  await send({
+    to,
+    subject,
+    html: `
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      ${href ? `<p><a href="${escapeHtml(href)}">Learn more</a></p>` : ''}
+      <p>You receive these emails because you opted in to Escrit promotions. You can turn them off in Notification settings.</p>
+    `,
+    devFallbackLabel: 'Promotion email',
+    devFallbackValue: title,
+    requireDelivery: true,
+  });
+}

@@ -104,7 +104,7 @@ linksRouter.get('/:id', asyncHandler(async (req, res) => {
 
   const transactions = await Transaction.find({ linkId: link._id }).sort({ createdAt: -1 });
   const reconciled = await Promise.all(
-    transactions.map((tx) => (tx.status === TX_STATUS.CREATED ? reconcileWithPaymentProvider(tx) : tx))
+    transactions.map((tx) => (tx.status === TX_STATUS.CREATED ? reconcileWithPaymentProvider(tx, req.app.get('io')) : tx))
   );
 
   res.json({ link, transactions: reconciled });

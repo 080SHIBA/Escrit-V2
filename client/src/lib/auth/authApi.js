@@ -97,6 +97,9 @@ async function request(url, body) {
 
   if (!response.ok) {
     const cause = String(data?.error || data?.message || '').toLowerCase();
+    if (url.endsWith('/sign-in') && cause.includes('google sign-in')) {
+      throw new Error(data.error);
+    }
     if (url.endsWith('/sign-in') && (response.status === 401 || cause.includes('password') || cause.includes('credential'))) {
       throw new Error('That password doesn’t match this email. Try again or reset your password.');
     }

@@ -166,7 +166,7 @@ export default function ShopifyIntegration() {
       {message && <p role="status" className="mt-4 rounded-lg border border-released/30 bg-released-soft px-3 py-2 text-sm text-released">{message}</p>}
 
       {!connection ? (
-        <form onSubmit={connect} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <form onSubmit={connect} className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <label className="block flex-1 text-sm text-ink/70">
             Shopify store
             <input
@@ -178,10 +178,10 @@ export default function ShopifyIntegration() {
               className="mt-1 min-h-11 w-full rounded-lg border border-line bg-input px-3 py-2"
             />
           </label>
-          <button disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper disabled:opacity-50">
+          <button disabled={Boolean(busy)} className="min-h-11 min-w-44 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-ink shadow-card-md transition-colors hover:bg-accent/90 disabled:opacity-50 sm:mb-0">
             {busy === 'connect' ? 'Connecting…' : 'Connect Shopify'}
           </button>
-          <p className="basis-full text-xs leading-5 text-ink/50">
+          <p className="text-xs leading-5 text-ink/50 sm:col-span-2">
             Enter the store’s *.myshopify.com domain. Shopify will show you the permissions Escrit requests before you approve.
           </p>
         </form>

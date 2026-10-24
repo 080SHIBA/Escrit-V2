@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 
@@ -24,11 +24,13 @@ import OnboardingPage from './pages/OnboardingPage.jsx';
 import PublicLinkPage from './pages/buyer/PublicLinkPage.jsx';
 import Result from './pages/buyer/Result.jsx';
 import BuyerLists from './pages/buyer/BuyerLists.jsx';
+import CartPage from './pages/buyer/CartPage.jsx';
 import MarketplaceListing from './pages/MarketplaceListing.jsx';
 import ListingDetailPage from './pages/ListingDetailPage.jsx';
 import SellerStorefront from './pages/SellerStorefront.jsx';
 import BuyerOrders from './pages/buyer/BuyerOrders.jsx';
 import ServiceOffers from './pages/buyer/ServiceOffers.jsx';
+import ServiceOrders from './pages/buyer/ServiceOrders.jsx';
 import ProductOffers from './pages/buyer/ProductOffers.jsx';
 import PlatformCredits from './pages/seller/PlatformCredits.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
@@ -40,6 +42,21 @@ import { useAuthContext } from './lib/AuthContext.jsx';
 function LegacyAuthRedirect({ to }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}`} replace />;
+}
+
+function MarketplaceRedirect() {
+  const [searchParams] = useSearchParams();
+  const legacyType = searchParams.get('type');
+  const categoryPath = {
+    product: 'products',
+    service: 'services',
+    course: 'courses',
+  }[legacyType] || 'products';
+  const nextParams = new URLSearchParams(searchParams);
+  nextParams.delete('type');
+  const query = nextParams.toString();
+
+  return <Navigate to={{ pathname: `/marketplace/${categoryPath}`, search: query ? `?${query}` : '' }} replace />;
 }
 
 function HomeRoute() {
@@ -68,7 +85,10 @@ export default function App() {
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
         {/* Public marketing page */}
         <Route path="/" element={<HomeRoute />} />
-        <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/marketplace" element={<MarketplaceRedirect />} />
+        <Route path="/marketplace/products" element={<MarketplacePage type="product" />} />
+        <Route path="/marketplace/services" element={<MarketplacePage type="service" />} />
+        <Route path="/marketplace/courses" element={<MarketplacePage type="course" />} />
         <Route path="/listing/:id" element={<ListingDetailPage />} />
         <Route path="/marketplace/seller/:sellerId" element={<SellerStorefront />} />
         <Route path="/marketplace/:type/:id" element={<MarketplaceListing />} />
@@ -89,11 +109,13 @@ export default function App() {
         <Route path="/settings" element={kycMocksEnabled ? <ProfileKycPage /> : <RequireAuth><ProfileKycPage /></RequireAuth>} />
         <Route path="/account/list-product" element={<Navigate to="/account/storefront?tab=list" replace />} />
         <Route path="/account/bank" element={<RequireAuth><BankPage /></RequireAuth>} />
-        <Route path="/account/cart" element={<RequireAuth><BuyerLists mode="cart" /></RequireAuth>} />
+        <Route path="/cart" element={<RequireAuth><CartPage /></RequireAuth>} />
+        <Route path="/account/cart" element={<Navigate to="/cart" replace />} />
         <Route path="/account/favorites" element={<RequireAuth><BuyerLists mode="favorites" /></RequireAuth>} />
         <Route path="/account/orders" element={orderMocksEnabled ? <BuyerOrders /> : <RequireAuth><BuyerOrders /></RequireAuth>} />
         <Route path="/account/offers" element={<RequireAuth><ServiceOffers /></RequireAuth>} />
         <Route path="/account/offers/:offerId" element={<RequireAuth><ServiceOffers /></RequireAuth>} />
+        <Route path="/account/service-orders" element={<RequireAuth><ServiceOrders /></RequireAuth>} />
         <Route path="/account/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
         <Route path="/account/storefront" element={<RequireAuth><SellerStorefront /></RequireAuth>} />
         <Route path="/account/price-offers" element={<RequireAuth><ProductOffers /></RequireAuth>} />

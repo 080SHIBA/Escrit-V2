@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../../lib/api.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
+import AdminToolsNav from '../../components/admin/AdminToolsNav.jsx';
 
 export default function PlatformSettings() {
   usePageTitle('Platform settings');
@@ -17,6 +17,10 @@ export default function PlatformSettings() {
   const [saved, setSaved] = useState(false);
   const [removingDemoData, setRemovingDemoData] = useState(false);
   const [demoRemovalResult, setDemoRemovalResult] = useState('');
+  const [promotion, setPromotion] = useState({ subject: '', title: '', message: '', path: '' });
+  const [sendingPromotion, setSendingPromotion] = useState(false);
+  const [promotionResult, setPromotionResult] = useState('');
+  const [promotionError, setPromotionError] = useState('');
   const { seller } = useAuthContext();
 
   useEffect(() => {
@@ -72,13 +76,31 @@ export default function PlatformSettings() {
     }
   }
 
+  async function sendPromotion(event) {
+    event.preventDefault();
+    if (!window.confirm('Send this email to all verified accounts that opted in to promotional email?')) return;
+    setSendingPromotion(true);
+    setPromotionResult('');
+    setPromotionError('');
+    try {
+      const result = await api.sendPromotionEmail(promotion);
+      setPromotionResult(`Sent to ${result.deliveredCount} of ${result.recipientCount} opted-in accounts${result.failedCount ? `; ${result.failedCount} failed` : ''}.`);
+      setPromotion({ subject: '', title: '', message: '', path: '' });
+    } catch (err) {
+      setPromotionError(err.message || 'Unable to send promotion email.');
+    } finally {
+      setSendingPromotion(false);
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="w-full max-w-none">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
         <div><p className="text-xs uppercase tracking-wider text-ink/50">Admin</p><h1 className="mt-2 font-display text-3xl">Platform settings</h1></div>
-        <nav aria-label="Admin tools" className="flex flex-wrap gap-4 text-sm"><Link to="/admin/disputes" className="underline underline-offset-4">Disputes</Link><Link to="/admin/kyc" className="underline underline-offset-4">KYC</Link><Link to="/admin/listings" className="underline underline-offset-4">Listings</Link></nav>
+        <AdminToolsNav />
       </header>
-      <form onSubmit={submit} className="certificate mt-6 max-w-xl space-y-5 p-5 sm:p-6">
+      <div className="mt-6 grid items-start gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.7fr)] xl:gap-5">
+      <form onSubmit={submit} className="certificate w-full max-w-xl space-y-5 p-5 sm:p-6 xl:max-w-none">
         <div><h2 className="font-medium">Seller commission</h2><p className="mt-1 text-sm leading-6 text-ink/60">Applied to the seller’s base price when escrow is released. The processor estimate is added to the buyer-facing listing price separately.</p></div>
         <label className="block text-sm text-ink/65">Commission percentage
           <div className="mt-2 flex items-center gap-3"><input type="range" min="0" max="25" step="0.5" value={commission} onChange={(event) => setCommission(event.target.value)} className="min-w-0 flex-1" /><input type="number" min="0" max="25" step="0.5" value={commission} onChange={(event) => setCommission(event.target.value)} className="w-24 border border-line bg-input px-3 py-2 text-right" /><span>%</span></div>
@@ -111,7 +133,18 @@ export default function PlatformSettings() {
         {saved && <p role="status" className="text-sm text-released">Settings saved.</p>}
         <button disabled={loading || saving} className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-paper disabled:opacity-50">{saving ? 'Saving…' : 'Save settings'}</button>
       </form>
-      {seller?.isOwner && <section className="certificate mt-6 max-w-xl border border-dispute/30 p-5 sm:p-6"><h2 className="font-medium text-dispute">Demo data cleanup</h2><p className="mt-2 text-sm leading-6 text-ink/60">Remove the seeded browse-only sellers, listings, payment links, test transactions, and related reviews. Real accounts, categories, and non-demo listings are not affected.</p><button type="button" onClick={removeDemoData} disabled={removingDemoData} className="mt-4 rounded-lg border border-dispute px-4 py-2.5 text-sm font-medium text-dispute disabled:opacity-50">{removingDemoData ? 'Removing demo data…' : 'Remove all demo data'}</button>{demoRemovalResult && <p role="status" className="mt-3 text-sm text-released">{demoRemovalResult}</p>}</section>}
+      {seller?.isOwner && <section className="certificate mt-6 max-w-xl border border-dispute/30 p-5 sm:p-6 xl:mt-0 xl:max-w-none"><h2 className="font-medium text-dispute">Demo data cleanup</h2><p className="mt-2 text-sm leading-6 text-ink/60">Remove the seeded browse-only sellers, listings, payment links, test transactions, and related reviews. Real accounts, categories, and non-demo listings are not affected.</p><button type="button" onClick={removeDemoData} disabled={removingDemoData} className="mt-4 rounded-lg border border-dispute px-4 py-2.5 text-sm font-medium text-dispute disabled:opacity-50">{removingDemoData ? 'Removing demo data…' : 'Remove all demo data'}</button>{demoRemovalResult && <p role="status" className="mt-3 text-sm text-released">{demoRemovalResult}</p>}</section>}
+      </div>
+      {seller?.isOwner && <form onSubmit={sendPromotion} className="certificate mt-6 max-w-3xl space-y-4 p-5 sm:p-6">
+        <div><h2 className="font-medium">Promotional email</h2><p className="mt-1 text-sm leading-6 text-ink/60">Send a marketplace update to verified accounts that opted in to promotional email. Important account notifications are managed separately.</p></div>
+        <label className="block text-sm text-ink/65">Email subject<input required minLength="3" maxLength="100" value={promotion.subject} onChange={(event) => setPromotion({ ...promotion, subject: event.target.value })} className="mt-2 w-full border border-line bg-input px-3 py-2" /></label>
+        <label className="block text-sm text-ink/65">Heading<input required minLength="3" maxLength="100" value={promotion.title} onChange={(event) => setPromotion({ ...promotion, title: event.target.value })} className="mt-2 w-full border border-line bg-input px-3 py-2" /></label>
+        <label className="block text-sm text-ink/65">Message<textarea required minLength="10" maxLength="2000" rows="5" value={promotion.message} onChange={(event) => setPromotion({ ...promotion, message: event.target.value })} className="mt-2 w-full border border-line bg-input px-3 py-2" /></label>
+        <label className="block text-sm text-ink/65">Optional link path<input maxLength="200" placeholder="/marketplace" value={promotion.path} onChange={(event) => setPromotion({ ...promotion, path: event.target.value })} className="mt-2 w-full border border-line bg-input px-3 py-2" /><span className="mt-1 block text-xs text-ink/50">Use a path on Escrit, such as /marketplace.</span></label>
+        {promotionError && <p role="alert" className="text-sm text-dispute">{promotionError}</p>}
+        {promotionResult && <p role="status" className="text-sm text-released">{promotionResult}</p>}
+        <button disabled={sendingPromotion} className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-paper disabled:opacity-50">{sendingPromotion ? 'Sending…' : 'Send promotional email'}</button>
+      </form>}
     </div>
   );
 }

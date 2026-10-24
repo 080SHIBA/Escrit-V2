@@ -111,8 +111,18 @@ const userSchema = new mongoose.Schema(
     kycReviewedAt: { type: Date, default: null },
     bankAccount: { type: bankAccountSchema, default: null },
     cartItems: { type: [cartItemSchema], default: [] },
+    cartDeliveryAddress: { type: String, trim: true, maxlength: 500, default: '' },
     favoriteListings: { type: [savedListingSchema], default: [] },
+    recentlyViewedListings: {
+      type: [{
+        listingType: { type: String, enum: ['product', 'course', 'service'], required: true },
+        listingId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        viewedAt: { type: Date, default: Date.now },
+      }],
+      default: [],
+    },
     promoCreditsKobo: { type: Number, min: 0, default: 0 },
+    marketingEmailOptIn: { type: Boolean, default: false },
 
     // Sparse so many email/password accounts can share a null googleId.
     googleId: { type: String },

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { AlertIcon, ShieldCheckIcon } from '../../components/icons.jsx';
+import AdminToolsNav from '../../components/admin/AdminToolsNav.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 
 // Admin queue for open disputes. Access is enforced by the API
@@ -46,8 +47,15 @@ export default function Disputes() {
   }
 
   return (
-    <div className="animate-fade-in-up">
-      <h1 className="font-display text-2xl mb-1">Open disputes</h1>
+    <div className="w-full max-w-none animate-fade-in-up">
+      <h1 className="mb-1 font-display text-2xl lg:hidden">Open disputes</h1>
+      <header className="mb-6 hidden flex-wrap items-end justify-between gap-4 border-b border-line pb-5 lg:flex">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-ink/50">Admin</p>
+          <h1 className="mt-2 font-display text-3xl">Open disputes</h1>
+        </div>
+        <AdminToolsNav />
+      </header>
       <p className="text-ink/60 mb-3">
         Releasing pays the seller. Refunding returns the money to the buyer.
       </p>
@@ -78,7 +86,7 @@ export default function Disputes() {
 
       <ul className="space-y-4">
         {data?.map(({ transaction, link, seller }) => (
-          <li key={transaction._id} className="certificate p-4 border-dispute/40 animate-fade-in-up">
+          <li key={transaction._id} className="certificate border-dispute/40 p-4 animate-fade-in-up lg:rounded-2xl lg:border lg:shadow-card-md lg:p-5">
             <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
               <div className="min-w-0">
                 <p className="font-medium break-words">{link?.itemName || 'Unknown item'}</p>

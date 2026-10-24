@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url';
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url';
 import { CheckCircleIcon } from './icons.jsx';
-import { createLivenessState, updateLivenessState } from '../lib/kycLiveness.js';
+import { createLivenessState, isFaceClearForCapture, updateLivenessState } from '../lib/kycLiveness.js';
 
 const WASM_FILESET = { wasmLoaderPath, wasmBinaryPath };
 const MODEL_PATH = '/models/face_landmarker.task';
@@ -45,6 +45,10 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
   const streamRef = useRef(null);
   const landmarkerRef = useRef(null);
   const mountedRef = useRef(true);
+  const clearFaceFramesRef = useRef(0);
+  const previousNoseRef = useRef(null);
+  const autoCaptureStartedRef = useRef(false);
+  const captureInProgressRef = useRef(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
@@ -79,14 +83,30 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
           const present = Boolean(landmarks);
           setFaceDetected((current) => current === present ? current : present);
           const categories = result.faceBlendshapes[0]?.categories || [];
+          const yaw = landmarks ? faceYaw(landmarks) : null;
           const state = updateLivenessState(challengeRef.current, {
             faceDetected: present,
             blinkScore: blinkScore(categories),
-            yaw: landmarks ? faceYaw(landmarks) : null,
+            yaw,
           });
           if (state !== challengeRef.current) {
             challengeRef.current = state;
             setChallenge(state);
+          }
+          const clearFace = state.complete && isFaceClearForCapture(landmarks, yaw, state.neutralYaw);
+          const nose = landmarks?.[1];
+          if (clearFace && nose) {
+            const previousNose = previousNoseRef.current;
+            const steady = previousNose && Math.hypot(nose.x - previousNose.x, nose.y - previousNose.y) <= 0.025;
+            clearFaceFramesRef.current = steady ? clearFaceFramesRef.current + 1 : 1;
+            previousNoseRef.current = { x: nose.x, y: nose.y };
+            if (clearFaceFramesRef.current >= 8 && !autoCaptureStartedRef.current) {
+              autoCaptureStartedRef.current = true;
+              void captureSelfie();
+            }
+          } else {
+            clearFaceFramesRef.current = 0;
+            previousNoseRef.current = null;
           }
         } catch {
           setError('The camera check stopped unexpectedly. Restart the camera to continue.');
@@ -113,6 +133,8 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
     landmarkerRef.current = null;
     setCameraOn(false);
     setFaceDetected(false);
+    clearFaceFramesRef.current = 0;
+    previousNoseRef.current = null;
   }
 
   async function startCamera() {
@@ -120,6 +142,9 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
     setStarting(true);
     setChallenge(createLivenessState());
     challengeRef.current = createLivenessState();
+    clearFaceFramesRef.current = 0;
+    previousNoseRef.current = null;
+    autoCaptureStartedRef.current = false;
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera access is unavailable. Open this page in a secure browser context.');
@@ -164,7 +189,8 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
 
   async function captureSelfie() {
     const video = videoRef.current;
-    if (!video || !challengeRef.current.complete) return;
+    if (!video || !challengeRef.current.complete || captureInProgressRef.current) return;
+    captureInProgressRef.current = true;
     setCapturing(true);
     setError('');
     try {
@@ -184,6 +210,7 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
     } catch (cause) {
       setError(cause.message || 'The selfie could not be captured. Try again.');
     } finally {
+      captureInProgressRef.current = false;
       setCapturing(false);
     }
   }
@@ -201,7 +228,7 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
       <p className="mt-1 text-sm text-ink/60">Camera frames are checked on this device. Only the captured selfie image is submitted for review.</p>
       <div className={`relative mt-3 aspect-[4/3] max-w-md overflow-hidden rounded-2xl border border-line bg-ink ${cameraOn && !file ? '' : 'hidden'}`}>
         <video ref={videoRef} autoPlay muted playsInline className="h-full w-full scale-x-[-1] object-cover" aria-label="Live selfie camera preview" />
-        <div className="pointer-events-none absolute inset-[12%] rounded-[50%] border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.18)]" aria-hidden="true" />
+        <div className="pointer-events-none absolute left-[28%] top-[6%] h-[88%] w-[44%] rounded-[50%] border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.18)]" aria-hidden="true" />
       </div>
       {file ? (
         <div className="mt-3 flex min-h-12 items-center gap-2 rounded-xl bg-released-soft px-3 py-2 text-sm text-released">
@@ -216,16 +243,16 @@ export default function KycSelfieCamera({ file, onChange, required = false }) {
               <p className="mt-3 text-sm font-medium" role="status" aria-live="polite">
                 {!faceDetected
                   ? 'Center your face in the guide and look at the camera.'
-                  : challenge.complete
-                    ? 'Liveness check complete. You can capture your selfie.'
+                  : capturing
+                    ? 'Liveness confirmed. Hold still while your selfie is captured.'
+                    : challenge.complete
+                    ? 'Liveness confirmed. Center your face in the guide and hold still for automatic capture.'
                     : challenge.neutralYaw === null
                       ? 'Look straight at the camera to begin.'
                       : 'Blink, or turn your head left and right.'}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={captureSelfie} disabled={!challenge.complete || capturing} className="min-h-11 rounded-xl bg-accent px-5 text-sm font-semibold text-accent-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45">
-                  {capturing ? 'Capturing…' : 'Capture selfie'}
-                </button>
+                {error && challenge.complete && <button type="button" onClick={captureSelfie} disabled={capturing} className="min-h-11 rounded-xl bg-accent px-5 text-sm font-semibold text-accent-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45">Try capture again</button>}
                 <button type="button" onClick={stopCamera} className="min-h-11 rounded-xl border border-line px-5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Cancel camera</button>
               </div>
             </div>

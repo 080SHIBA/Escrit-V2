@@ -21,6 +21,13 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
   const slideCount = hasListings ? items.length : 1;
   const activeItem = hasListings ? items[activeIndex % items.length] : null;
   const [emptyTitle, emptyBody] = CATEGORY_COPY[type] || CATEGORY_COPY.product;
+  const paymentCopy = activeItem?.paymentOptions?.escrow && activeItem?.paymentOptions?.direct
+    ? 'escrow optional'
+    : activeItem?.paymentOptions?.escrow
+      ? 'escrow only'
+      : activeItem?.paymentOptions?.direct
+        ? 'pay without escrow'
+        : 'review payment options';
 
   useEffect(() => {
     if (slideCount < 2 || paused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
@@ -34,7 +41,7 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
 
   const destination = hasListings
     ? `/marketplace/${type}/${activeItem._id}`
-    : `/marketplace?type=${type}`;
+    : `/marketplace/${type === 'product' ? 'products' : `${type}s`}`;
   const image = activeItem?.images?.[0] || COVER_IMAGES[type] || COVER_IMAGES.product;
   const price = !hasListings
     ? null
@@ -59,7 +66,7 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
         </div>
         <div className="flex items-center gap-3">
           {hasListings && <span className="font-mono text-xs text-ink/50">{activeIndex + 1} / {items.length}</span>}
-          <Link to={`/marketplace?type=${type}`} className="text-sm font-medium text-forest-700 underline underline-offset-4 dark:text-seal">View all</Link>
+          <Link to={`/marketplace/${type === 'product' ? 'products' : `${type}s`}`} className="text-sm font-medium text-forest-700 underline underline-offset-4 dark:text-seal">View all</Link>
         </div>
       </div>
 
@@ -70,7 +77,7 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
           <span className="absolute inset-0 bg-gradient-to-t from-forest-950/70 via-transparent to-forest-950/10" />
           <div className={`relative flex max-w-3xl flex-col justify-end p-5 sm:p-9 lg:p-12 ${compact ? 'min-h-[18rem] sm:min-h-[20rem] lg:min-h-[21rem]' : 'min-h-[19rem] sm:min-h-[24rem] lg:min-h-[27rem]'}`}>
             <span className="mb-auto inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-forest-950/90 px-3 py-1.5 text-xs font-medium text-white/90">
-              <LockIcon width={13} height={13} /> {hasListings ? activeItem.category || type : 'Marketplace · escrow protected'}
+              <LockIcon width={13} height={13} /> {hasListings ? activeItem.category || type : 'Marketplace · escrow optional by listing'}
             </span>
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-seal">
@@ -87,7 +94,7 @@ export default function FeaturedCarousel({ items = [], type, title, empty = fals
                 <span className="inline-flex items-center gap-2 rounded-md bg-seal px-4 py-2.5 text-sm font-semibold text-forest-950 transition-transform group-hover/carousel:translate-x-1">
                   {hasListings ? 'View listing' : `Browse ${type}`} <ChevronRightIcon width={16} height={16} />
                 </span>
-                {hasListings && <span className="text-sm text-white/70">{activeItem.averageRating ? `★ ${Number(activeItem.averageRating).toFixed(1)}` : 'New listing'} · {type === 'product' ? 'protected checkout' : type === 'service' ? 'direct booking' : 'learn at your pace'}</span>}
+                {hasListings && <span className="text-sm text-white/70">{activeItem.averageRating ? `★ ${Number(activeItem.averageRating).toFixed(1)}` : 'New listing'} · {paymentCopy}</span>}
               </div>
             </div>
           </div>

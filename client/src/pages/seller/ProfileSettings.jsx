@@ -49,10 +49,10 @@ export default function ProfileSettings() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-5xl">
       <p className="text-xs font-medium uppercase tracking-wider text-ink/50">Account</p>
       <h1 className="mt-2 font-display text-3xl">Profile settings</h1>
-      <form onSubmit={submit} className="certificate mt-6 space-y-5 p-5 sm:p-6">
+      <form onSubmit={submit} className="certificate mt-6 max-w-2xl space-y-5 p-5 sm:p-6">
         <label className="block">
           <span className="text-sm text-ink/70">Business or display name</span>
           <input required minLength={2} maxLength={80} value={form.businessName} onChange={(event) => setForm({ ...form, businessName: event.target.value })} className="mt-1 w-full border border-line bg-input px-3 py-2 rounded-lg" />

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterListings, formatRating, sortListings } from './marketplaceState.js';
+import { filterListings, formatRating, getMarketplaceCardAction, sortListings } from './marketplaceState.js';
 
 const listings = [
   { id: '1', type: 'product', title: 'Linen tote', category: 'Fashion', sellerName: 'Ayo', price: 12000, ratingAvg: 4.8, ratingCount: 23, createdAt: '2026-01-02' },
@@ -28,4 +28,10 @@ test('sorts by newest, both price directions, and top rated', () => {
 test('formats ratings with one decimal and preserves the no-review state', () => {
   assert.equal(formatRating(4.75, 23), '4.8 (23)');
   assert.equal(formatRating(0, 0), 'No reviews yet');
+});
+
+test('routes service listings to booking or quote instead of the cart', () => {
+  assert.equal(getMarketplaceCardAction(listings[0]), 'cart');
+  assert.equal(getMarketplaceCardAction({ ...listings[1], serviceModel: 'appointment' }), 'book');
+  assert.equal(getMarketplaceCardAction({ ...listings[1], serviceModel: 'custom_quote' }), 'request-quote');
 });

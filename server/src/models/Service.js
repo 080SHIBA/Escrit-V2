@@ -9,6 +9,29 @@ const availabilitySchema = new mongoose.Schema(
   { _id: false }
 );
 
+const servicePackageSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, trim: true, maxlength: 48 },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    description: { type: String, trim: true, maxlength: 500, default: '' },
+    priceNaira: { type: Number, min: 100, required: true },
+    deliveryDays: { type: Number, min: 1, max: 365, default: 7 },
+    revisionCount: { type: Number, min: 0, max: 20, default: 0 },
+    deliverables: { type: [String], default: [] },
+  },
+  { _id: false }
+);
+
+const serviceAddOnSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, trim: true, maxlength: 48 },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    description: { type: String, trim: true, maxlength: 300, default: '' },
+    priceNaira: { type: Number, min: 100, required: true },
+  },
+  { _id: false }
+);
+
 const serviceSchema = new mongoose.Schema(
   {
     seller: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -21,6 +44,15 @@ const serviceSchema = new mongoose.Schema(
     fulfillmentOverridesDefault: { type: Boolean, default: false },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
+    serviceModel: { type: String, enum: ['appointment', 'fixed_scope', 'custom_quote'], default: 'appointment', index: true },
+    packages: { type: [servicePackageSchema], default: [] },
+    addOns: { type: [serviceAddOnSchema], default: [] },
+    blockedDates: {
+      type: [{ startAt: { type: Date, required: true }, endAt: { type: Date, required: true } }],
+      default: [],
+    },
+    maxRevisions: { type: Number, min: 0, max: 20, default: 1 },
+    reservationMinutes: { type: Number, min: 5, max: 1440, default: 30 },
     images: { type: [String], default: [] },
     category: { type: String, default: 'General' },
     categoryReviewStatus: { type: String, enum: ['approved', 'pending'], default: 'approved' },

@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle.jsx';
-import { CartIcon, CloseIcon, IdentityVerificationIcon } from './icons.jsx';
+import { CartIcon, CloseIcon } from './icons.jsx';
+import { KycPreviewIcon } from './admin/AdminNavIcon.jsx';
 
 const ROW_STYLES = {
   default: 'gap-4 px-4 text-lg font-medium text-ink hover:bg-paper-2',
@@ -140,12 +141,12 @@ export default function MobileMenu({ open, onClose, items, heading, brand, showT
           <div className="mt-8 pt-6 px-4 border-t border-line flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-ink/60">Theme</span>
             <div className="flex items-center gap-2">
-              <Link to="/account/cart" aria-label={`Shopping cart, ${cartCount} items`} title="Shopping cart" className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 hover:bg-paper-2 hover:text-ink">
+              <Link to="/cart" aria-label={`Shopping cart, ${cartCount} items`} title="Shopping cart" className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 hover:bg-paper-2 hover:text-ink">
                 <CartIcon width={20} height={20} />
                 {cartCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-dispute px-1 text-[9px] font-bold text-white">{cartCount > 99 ? '99+' : cartCount}</span>}
               </Link>
               <Link to="/settings" aria-label="Profile settings" title="Profile settings" className="flex h-10 w-10 items-center justify-center rounded-lg text-ink/70 hover:bg-paper-2 hover:text-ink">
-                <IdentityVerificationIcon width={20} height={20} />
+                <KycPreviewIcon width={20} height={20} />
               </Link>
               {showThemeToggle && <ThemeToggle />}
             </div>

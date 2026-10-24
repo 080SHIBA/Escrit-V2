@@ -17,12 +17,14 @@ import { listingWorkflowRouter, marketplaceRouter } from './routes/marketplace.j
 import { uploadsRouter } from './routes/uploads.js';
 import { shopifyRouter } from './routes/shopify.js';
 import { serviceOffersRouter } from './routes/serviceOffers.js';
+import { servicesRouter } from './routes/services.js';
 import { productOffersRouter } from './routes/productOffers.js';
 import { ordersRouter } from './routes/orders.js';
 import { onboardingRouter } from './routes/onboarding.js';
 import { escrowLinksRouter } from './routes/escrowLinks.js';
 import { funnelEventsRouter } from './routes/funnelEvents.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { cartCheckoutRouter } from './routes/cartCheckout.js';
 import { getPlatformSettings } from './services/platformSettings.js';
 import { asyncHandler } from './middleware/asyncHandler.js';
 
@@ -63,6 +65,7 @@ export function createApp() {
   app.use('/api/escrow-links', escrowLinksRouter);
   app.use('/api/funnel-events', funnelEventsRouter);
   app.use('/api/notifications', notificationsRouter);
+  app.use('/api', cartCheckoutRouter);
   app.use('/api/profile', profileRouter);
   app.use('/api/kyc', kycRouter);
   app.use('/api/seller', sellerRouter);
@@ -73,6 +76,7 @@ export function createApp() {
   app.use('/api/listings', listingWorkflowRouter);
   app.use('/api/uploads', uploadsRouter);
   app.use('/api/service-offers', serviceOffersRouter);
+  app.use('/api/services', servicesRouter);
   app.use('/api/product-offers', productOffersRouter);
   app.use('/api/orders', ordersRouter);
   app.use('/api/r', publicRouter); // buyer-facing, no auth

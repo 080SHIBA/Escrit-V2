@@ -22,6 +22,7 @@ import { ensureCheckoutPrice } from '../services/pricing.js';
 import { Course } from '../models/Course.js';
 import { Product } from '../models/Product.js';
 import { Service } from '../models/Service.js';
+import { notifyDisputeRaised } from '../services/notificationEvents.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
 import { DEFAULT_RELEASE_WINDOW_HOURS } from '../../../shared/releaseConditions.js';
@@ -200,7 +201,7 @@ publicRouter.get('/:linkId/t/:txId', requireAuth, asyncHandler(async (req, res) 
   const checkoutPriceKobo = await ensureCheckoutPrice(link);
   let tx = await loadTransaction(req);
   await assertBuyerOwnsTransaction(req, tx);
-  tx = await reconcileWithPaymentProvider(tx);
+  tx = await reconcileWithPaymentProvider(tx, req.app.get('io'));
   const seller = await User.findById(link.sellerId);
   const courseAccess = [TX_STATUS.PAID_HELD, TX_STATUS.RELEASED, TX_STATUS.RESOLVED_RELEASED, TX_STATUS.DIRECT_PAID].includes(tx.status) && link.fulfillmentType === 'course' && link.listingId
     ? await Course.findById(link.listingId).select('curriculum deliveryFormat')
@@ -258,6 +259,7 @@ publicRouter.post('/:linkId/t/:txId/dispute', requireAuth, validate(disputeSchem
   const tx = await loadTransaction(req);
   await assertBuyerOwnsTransaction(req, tx);
   const updated = await raiseDispute(tx, req.body.reason, { text: req.body.evidenceText, mediaUrl: req.body.evidenceUrl });
+  await notifyDisputeRaised({ io: req.app.get('io'), transaction: updated });
   res.json({ transaction: updated });
 }));
 

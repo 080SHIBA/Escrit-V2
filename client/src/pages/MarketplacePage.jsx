@@ -13,26 +13,43 @@ import { useListings } from '../hooks/useListings.js';
 import { useSaved } from '../hooks/useSaved.js';
 
 function readFilters(searchParams) {
-  const type = searchParams.get('type') || 'all';
   const category = searchParams.get('category') || 'all';
   const sort = searchParams.get('sort') || 'newest';
   return {
     query: searchParams.get('q') || '',
-    type: ['all', 'product', 'service', 'course'].includes(type) ? type : 'all',
     category: ['all', ...MARKETPLACE_CATEGORIES].includes(category) ? category : 'all',
     minRating: searchParams.get('minRating') === '4.5' ? '4.5' : '',
     sort: ['newest', 'price-low', 'price-high', 'top-rated'].includes(sort) ? sort : 'newest',
   };
 }
 
-export default function MarketplacePage() {
-  usePageTitle('Marketplace');
+const PAGE_CONTENT = {
+  product: {
+    title: 'Products',
+    description: 'Shop useful finds from independent sellers. Check each listing for delivery, pickup, and payment options.',
+    action: 'List a product',
+  },
+  service: {
+    title: 'Services',
+    description: 'Find skilled people for the work you need. Review the details and agree timing with the seller.',
+    action: 'Offer a service',
+  },
+  course: {
+    title: 'Courses',
+    description: 'Explore practical courses from independent creators and choose the learning format that works for you.',
+    action: 'Create a course',
+  },
+};
+
+export default function MarketplacePage({ type = 'product' }) {
+  const page = PAGE_CONTENT[type] || PAGE_CONTENT.product;
+  usePageTitle(`${page.title} | Marketplace`);
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = readFilters(searchParams);
   const [queryInput, setQueryInput] = useState(filters.query);
   const [toast, setToast] = useState('');
   const { seller } = useAuthContext();
-  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings();
+  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings({ pageSize: 100 });
   const { cartIds, addToCart } = useCart();
   const { savedIds, toggleSaved } = useSaved();
   const ownSellerId = seller?._id || seller?.id || seller?.sellerId || '';
@@ -100,12 +117,12 @@ export default function MarketplacePage() {
   const visibleListings = useMemo(() => {
     const matching = filterListings(listings, {
       q: filters.query,
-      type: filters.type,
+      type,
       category: filters.category,
       minRating: filters.minRating,
     });
     return sortListings(matching, filters.sort);
-  }, [filters.category, filters.minRating, filters.query, filters.sort, filters.type, listings]);
+  }, [filters.category, filters.minRating, filters.query, filters.sort, listings, type]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
@@ -117,22 +134,28 @@ export default function MarketplacePage() {
             </p>
           )}
           <p className="eyebrow">ESCRIT MARKETPLACE</p>
-          <h1 className="mt-2 font-display text-3xl sm:text-4xl">Marketplace</h1>
+          <h1 className="mt-2 font-display text-3xl sm:text-4xl">{page.title}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65 sm:text-base">
-            Browse listings and check each listing for its available payment options. Escrow is optional.
+            {page.description} Escrow is optional by listing.
           </p>
         </div>
         <Link
           to="/account/storefront?tab=list"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-ink px-5 text-sm font-semibold text-paper hover:bg-ink/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
         >
-          List product
+          {page.action}
         </Link>
       </header>
 
-      <section aria-label="Find listings" className="market-filters mt-7 space-y-4">
-        <SearchBar query={queryInput} onQueryChange={setQueryInput} sort={filters.sort} onSortChange={(value) => updateFilter('sort', value)} />
-        <TypeSwitch value={filters.type} onChange={(value) => updateFilter('type', value)} />
+      <section aria-label={`Find ${page.title.toLowerCase()}`} className="market-filters mt-8 space-y-6">
+        <TypeSwitch value={type} />
+        <SearchBar
+          query={queryInput}
+          onQueryChange={setQueryInput}
+          sort={filters.sort}
+          onSortChange={(value) => updateFilter('sort', value)}
+          listingLabel={page.title.toLowerCase()}
+        />
         <FilterChips
           minRating={filters.minRating}
           onRatingChange={(value) => updateFilter('minRating', value)}

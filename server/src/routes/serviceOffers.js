@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { Service } from '../models/Service.js';
+import { ServiceOrder } from '../models/ServiceOrder.js';
 import { ServiceOffer } from '../models/ServiceOffer.js';
 import { ConversationMessage } from '../models/ConversationMessage.js';
 import { Link } from '../models/Link.js';
@@ -13,6 +14,7 @@ import { User } from '../models/User.js';
 import { quoteCollectionFee } from '../services/paymentProvider.js';
 import { sendMessageNotificationEmail } from '../services/mailer.js';
 import { env } from '../config/env.js';
+import { effectivePaymentOptions } from './marketplace.js';
 
 export const serviceOffersRouter = Router();
 serviceOffersRouter.use(requireAuth);
@@ -35,26 +37,21 @@ function emitToOffer(req, offer, event, payload) {
 async function notifyRecipient(req, offer, recipientId, message) {
   const io = req.app.get('io');
   io?.to(`user:${recipientId}`).emit('notification:new', { messageId: message.id, offerId: offer.id });
-
   try {
     const [recipient, sender, service] = await Promise.all([
       User.findById(recipientId).select('email'),
-      User.findById(message.senderId).select('businessName'),
+      User.findById(message.senderId).select('businessName displayName'),
       Service.findById(offer.serviceId).select('title'),
     ]);
-    if (!recipient?.email) {
-      console.warn(`[notifications] Cannot email message ${message.id}: recipient email is unavailable`);
-      return;
-    }
+    if (!recipient?.email) return;
     const messageText = message.type === 'offer'
       ? `A service proposal was ${message.offerEvent?.action || 'updated'}.`
       : message.body;
-    const conversationUrl = new URL(`/account/offers/${offer.id}`, env.clientUrl).toString();
     await sendMessageNotificationEmail(recipient.email, {
-      senderName: sender?.businessName || 'An Escrit user',
+      senderName: sender?.displayName || sender?.businessName || 'An Escrit user',
       serviceName: service?.title || 'your service conversation',
       messageText,
-      conversationUrl,
+      conversationUrl: new URL(`/account/offers/${offer.id}`, env.clientUrl).toString(),
     });
   } catch (error) {
     console.error(`[notifications] Failed to email recipient about message ${message.id}:`, error.message);
@@ -76,11 +73,18 @@ async function saveOfferMessage(req, offer, action, priceKobo, note = '') {
   return message;
 }
 
-const createSchema = Joi.object({
+export const createSchema = Joi.object({
   serviceId: Joi.string().hex().length(24).required(),
   priceNaira: Joi.number().min(100).max(100000000).required(),
   fulfilmentCriteria: Joi.string().trim().min(5).max(2000).required(),
   appointmentAt: Joi.date().iso().allow(null).default(null),
+  paymentMode: Joi.string().valid('escrow', 'direct').required(),
+  directPaymentRiskAccepted: Joi.boolean().when('paymentMode', {
+    is: 'direct',
+    then: Joi.valid(true).required(),
+    otherwise: Joi.valid(false).default(false),
+  }),
+  termsAccepted: Joi.boolean().valid(true).required(),
 });
 
 serviceOffersRouter.get('/', asyncHandler(async (req, res) => {
@@ -118,12 +122,19 @@ serviceOffersRouter.post('/', validate(createSchema), asyncHandler(async (req, r
   const service = await Service.findOne({ _id: req.body.serviceId, isActive: true, isVerified: true });
   if (!service) throw new AppError(404, 'Service is no longer available');
   if (String(service.seller) === String(req.sellerId)) throw new AppError(409, 'You cannot make an offer on your own service');
+  if (service.serviceModel !== 'custom_quote') throw new AppError(409, 'Use the service booking options to order this listing.');
+  const seller = await User.findById(service.seller);
+  const paymentOptions = effectivePaymentOptions(service, seller);
+  if (!paymentOptions[req.body.paymentMode]) throw new AppError(409, 'That payment option is not available for this service.');
+  if (req.body.paymentMode === 'direct' && !seller?.bankAccount) throw new AppError(409, 'This seller is not ready to receive direct payment.');
   const priceKobo = Math.round(req.body.priceNaira * 100);
   const offer = await ServiceOffer.create({
     serviceId: service._id,
     buyerId: req.sellerId,
     sellerId: service.seller,
     currentPriceKobo: priceKobo,
+    paymentMode: req.body.paymentMode,
+    directPaymentRiskAcceptedAt: req.body.directPaymentRiskAccepted ? new Date() : null,
     fulfilmentCriteria: req.body.fulfilmentCriteria,
     appointmentAt: req.body.appointmentAt,
     offerHistory: [{ action: 'proposed', actorId: req.sellerId, priceKobo }],
@@ -191,6 +202,54 @@ serviceOffersRouter.post('/:id/accept', asyncHandler(async (req, res) => {
 
   const service = await Service.findOne({ _id: offer.serviceId, isActive: true, isVerified: true });
   if (!service) throw new AppError(409, 'This service is no longer available');
+  if (offer.paymentMode === 'direct' && !offer.directPaymentRiskAcceptedAt) {
+    throw new AppError(409, 'The buyer must acknowledge the direct-payment risks before this proposal can be accepted.');
+  }
+  if (service.serviceModel === 'custom_quote') {
+    const existing = offer.acceptedOrderId ? await ServiceOrder.findById(offer.acceptedOrderId) : null;
+    if (existing) return res.json({ offer, orderId: existing.id });
+    const termsSnapshot = [
+      `Service: ${service.title}`,
+      `Agreed scope: ${offer.fulfilmentCriteria}`,
+      `Agreed price: ₦${(offer.currentPriceKobo / 100).toLocaleString('en-NG')}`,
+      offer.appointmentAt ? `Requested appointment: ${offer.appointmentAt.toISOString()}` : '',
+      service.cancellationTerms ? `Cancellation: ${service.cancellationTerms}` : `Cancellation policy: ${service.cancellationPolicy}.`,
+      offer.paymentMode === 'escrow'
+        ? 'Payment method: Escrit escrow. Funds are held according to the transaction terms and are released after completion confirmation or the default release window.'
+        : 'Payment method: direct payment without escrow. Escrit cannot hold or recover the money, and reporting does not guarantee a refund.',
+      offer.paymentMode === 'direct' ? `Direct-payment risk acknowledgement accepted at: ${offer.directPaymentRiskAcceptedAt?.toISOString() || 'not recorded'}.` : '',
+      'The accepted scope, price and terms are saved with this order.',
+    ].filter(Boolean).join('\n\n');
+    let order = await ServiceOrder.findOne({ buyerId: offer.buyerId, idempotencyKey: `service-offer:${offer.id}` });
+    if (!order) {
+      order = await ServiceOrder.create({
+        serviceId: service._id,
+        sellerId: offer.sellerId,
+        buyerId: offer.buyerId,
+        kind: 'quote',
+        status: 'awaiting_payment',
+        paymentMode: offer.paymentMode,
+        appointmentAt: offer.appointmentAt,
+        durationMinutes: offer.appointmentAt ? service.durationMinutes : null,
+        timeZone: service.timeZone,
+        details: offer.fulfilmentCriteria,
+        amountKobo: offer.currentPriceKobo,
+        termsSnapshot,
+        termsAcceptedAt: new Date(),
+        directPaymentRiskAcceptedAt: offer.directPaymentRiskAcceptedAt,
+        idempotencyKey: `service-offer:${offer.id}`,
+        maxRevisions: service.maxRevisions,
+        events: [{ status: 'awaiting_payment', actorId: req.sellerId, note: 'Service proposal accepted.' }],
+      });
+    }
+    offer.status = 'ACCEPTED';
+    offer.agreedPriceKobo = offer.currentPriceKobo;
+    offer.acceptedOrderId = order._id;
+    offer.offerHistory.push({ action: 'accepted', actorId: req.sellerId, priceKobo: offer.agreedPriceKobo });
+    await offer.save();
+    await saveOfferMessage(req, offer, 'accepted', offer.agreedPriceKobo);
+    return res.json({ offer, orderId: order.id });
+  }
   const link = await Link.create({
     sellerId: offer.sellerId,
     itemName: service.title,

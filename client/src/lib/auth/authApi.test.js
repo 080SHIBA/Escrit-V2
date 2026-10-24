@@ -32,6 +32,16 @@ test('sign in sends normalized credentials to the real auth endpoint', async () 
   });
 });
 
+test('Google-only account sign-in errors tell the user to continue with Google', async () => {
+  const message = 'This account uses Google Sign-In — log in with Google instead';
+  await withFetch(async () => jsonResponse({ error: message }, 401), async () => {
+    await assert.rejects(
+      signIn({ email: 'buyer@example.com', password: 'unused' }),
+      (error) => error.message === message,
+    );
+  });
+});
+
 test('sign up sends full name and selected intents to the email verification endpoint', async () => {
   await withFetch(async (url, options) => {
     assert.equal(url, '/api/auth/sign-up');

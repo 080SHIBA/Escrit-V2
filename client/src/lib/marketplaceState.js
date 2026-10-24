@@ -34,6 +34,11 @@ export function formatRating(ratingAvg, ratingCount) {
   return `${Number(ratingAvg).toFixed(1)} (${ratingCount})`;
 }
 
+export function getMarketplaceCardAction(listing) {
+  if (listing.type !== 'service') return 'cart';
+  return listing.serviceModel === 'custom_quote' ? 'request-quote' : 'book';
+}
+
 export function filterListings(listings, filters = {}) {
   const query = String(filters.q || '').trim().toLocaleLowerCase();
   const minRating = Number(filters.minRating || 0);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { usePageTitle } from '../lib/usePageTitle.js';
@@ -64,6 +64,7 @@ export default function MarketplaceListing() {
     }
   }
 
+  if (type === 'service') return <Navigate to={`/listing/${id}`} replace />;
   if (error && !item) return <p role="alert" className="text-sm text-dispute">{error}</p>;
   if (!item) return <p className="py-10 text-sm text-ink/55">Loading listing…</p>;
 
@@ -71,7 +72,7 @@ export default function MarketplaceListing() {
   const paymentOptions = item.paymentOptions || { escrow: false, direct: true };
   return (
     <article className="mx-auto max-w-6xl">
-      <Link to={`/marketplace?type=${type}`} className="inline-flex items-center gap-1 text-sm text-ink/55 hover:text-ink"><ChevronRightIcon className="rotate-180" width={16} height={16} />Back to {type}s</Link>
+      <Link to={`/marketplace/${type === 'product' ? 'products' : `${type}s`}`} className="inline-flex items-center gap-1 text-sm text-ink/55 hover:text-ink"><ChevronRightIcon className="rotate-180" width={16} height={16} />Back to {type}s</Link>
       <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
         <div>
           <img src={item.images?.[0] || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=1200&q=80'} alt={item.title} className="aspect-[4/3] w-full rounded-lg object-cover" />
@@ -109,7 +110,7 @@ export default function MarketplaceListing() {
           )}
           {kycRequired && <Link to={`/settings?next=${encodeURIComponent(window.location.pathname)}`} className="mt-3 inline-block text-sm underline underline-offset-4">Complete identity details to continue</Link>}
           {type === 'product' && <ProductOfferPanel product={item} />}
-          {message && <p role="status" className="mt-3 text-sm text-released">{message} <Link to="/account/cart" className="underline">View cart</Link></p>}
+          {message && <p role="status" className="mt-3 text-sm text-released">{message} <Link to="/cart" className="underline">View cart</Link></p>}
           {error && <p role="alert" className="mt-3 text-sm text-dispute">{error}</p>}
           <div className="mt-6 border-t border-line pt-5">
             <p className="text-xs uppercase tracking-wider text-ink/45">Seller</p>

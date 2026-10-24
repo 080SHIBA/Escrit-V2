@@ -52,6 +52,9 @@ const transactionSchema = new mongoose.Schema(
 
     paymentProvider: { type: String, enum: ['paystack', 'flutterwave'], default: 'paystack' },
     paymentReference: { type: String, default: null, index: true },
+    checkoutAttemptId: { type: mongoose.Schema.Types.ObjectId, ref: 'CheckoutAttempt', default: null, index: true },
+    serviceOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceOrder', default: null, index: true },
+    serviceOrderKind: { type: String, enum: ['appointment', 'fixed_scope', 'quote', null], default: null },
     checkoutMode: { type: String, enum: ['escrow', 'direct'], default: 'escrow' },
     directInventoryReserved: { type: Boolean, default: false },
     checkoutTotalKobo: { type: Number, default: null },
@@ -64,6 +67,7 @@ const transactionSchema = new mongoose.Schema(
     buyerPhone: { type: String, default: null },
     termsAcceptedAt: { type: Date, default: null },
     termsSnapshot: { type: String, default: '' },
+    deliveryAddressSnapshot: { type: String, default: '' },
     releaseWindowHours: { type: Number, enum: releaseWindowValues, default: DEFAULT_RELEASE_WINDOW_HOURS },
 
     fulfillmentStatus: {

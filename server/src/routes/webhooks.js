@@ -7,10 +7,11 @@ import { reconcileWithPaymentProvider } from '../services/escrow.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getFlutterwaveCredentials, getPaystackCredentials } from '../services/paymentMode.js';
 import { recordFunnelEvent } from '../services/funnel.js';
+import { CheckoutAttempt } from '../models/CheckoutAttempt.js';
 
 export const webhooksRouter = Router();
 
-async function reconcileEvent(provider, event) {
+async function reconcileEvent(provider, event, io) {
   const reference = provider === 'flutterwave' ? event.data?.tx_ref : event.data?.reference;
   const providerId = event.data?.id;
   if (!reference || !providerId) return;
@@ -18,7 +19,15 @@ async function reconcileEvent(provider, event) {
   if (tx && tx.status === 'CREATED') {
     tx.paymentProviderTransactionId = provider === 'flutterwave' ? String(providerId) : String(reference);
     await tx.save();
-    const reconciled = await reconcileWithPaymentProvider(tx);
+    const reconciled = await reconcileWithPaymentProvider(tx, io);
+    const attempt = await CheckoutAttempt.findOne({ reference });
+    if (attempt) {
+      const transactions = await Transaction.find({ checkoutAttemptId: attempt._id });
+      if (transactions.length && transactions.every((transaction) => transaction.status !== 'CREATED')) {
+        attempt.status = 'confirmed';
+        await attempt.save();
+      }
+    }
     if (reconciled.status !== 'CREATED') {
       recordFunnelEvent('payment_completed', {
         userId: reconciled.buyerUserId,
@@ -43,7 +52,7 @@ webhooksRouter.post('/flutterwave', asyncHandler(async (req, res) => {
   }
 
   const event = JSON.parse(req.body.toString('utf8'));
-  if (event.event === 'charge.completed') await reconcileEvent('flutterwave', event);
+  if (event.event === 'charge.completed') await reconcileEvent('flutterwave', event, req.app.get('io'));
 
   res.status(200).end();
 }));
@@ -61,7 +70,7 @@ webhooksRouter.post('/paystack', asyncHandler(async (req, res) => {
   }
 
   const event = JSON.parse(req.body.toString('utf8'));
-  if (event.event === 'charge.success') await reconcileEvent('paystack', event);
+  if (event.event === 'charge.success') await reconcileEvent('paystack', event, req.app.get('io'));
 
   res.status(200).end();
 }));

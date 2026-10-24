@@ -19,6 +19,7 @@ import { verifyGoogleIdToken, isGoogleSignInConfigured } from '../services/googl
 import { isEmailDeliveryConfigured, sendOtpEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/mailer.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { escrowReturnPath, parseEscrowReturnTo } from '../utils/escrowReturn.js';
+import { notifyUser } from '../services/notifications.js';
 import {
   generateOtp,
   verifyOtp,
@@ -28,6 +29,7 @@ import {
   hashVerificationToken,
   verifyVerificationToken,
 } from '../utils/otp.js';
+import { normalizedEmailSchema } from '../utils/authValidation.js';
 
 export const authRouter = Router();
 
@@ -75,7 +77,7 @@ function recordAuthFunnelEvent(event, userId, target) {
 }
 
 const registerSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: normalizedEmailSchema,
   password: Joi.string().min(8).required(),
   businessName: Joi.string().min(2).max(80).required(),
   fullName: Joi.string().trim().min(2).max(120).required(),
@@ -83,7 +85,7 @@ const registerSchema = Joi.object({
 });
 
 const signUpSchema = Joi.object({
-  email: Joi.string().email().trim().lowercase().required(),
+  email: normalizedEmailSchema,
   fullName: Joi.string().trim().min(2).max(120).pattern(/^\S+(?:\s+\S+)+$/).required(),
   password: Joi.string().min(8).pattern(/[\d\p{P}\p{S}]/u).required(),
   intents: Joi.array().items(Joi.string().valid('Buy', 'Sell', 'Escrow links')).min(1).unique().required(),
@@ -139,7 +141,7 @@ authRouter.post('/sign-up', authLimiter, validate(signUpSchema), asyncHandler(as
 }));
 
 const resendVerificationSchema = Joi.object({
-  email: Joi.string().email().trim().lowercase().required(),
+  email: normalizedEmailSchema,
 });
 
 authRouter.post('/resend-verification', authLimiter, validate(resendVerificationSchema), asyncHandler(async (req, res) => {
@@ -196,7 +198,7 @@ authRouter.post('/register', authLimiter, validate(registerSchema), asyncHandler
 }));
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().trim().lowercase().required(),
+  email: normalizedEmailSchema,
   password: Joi.string().required(),
   returnTo: Joi.string().pattern(/^\/(?:r|escrow)\/[a-f\d]{24}(?:\/t\/[a-f\d]{24})?$/i),
 });
@@ -219,7 +221,16 @@ const signIn = asyncHandler(async (req, res) => {
 
   const target = applyEscrowReturn(user, returnTo);
   if (target) await user.save();
-  res.json(await issueSession(res, user));
+  const session = await issueSession(res, user);
+  await notifyUser({
+    io: req.app.get('io'),
+    recipientId: user._id,
+    type: 'login',
+    title: 'New sign-in',
+    message: `You signed in to Escrit at ${new Date().toLocaleString()}.`,
+    href: '/account/notifications',
+  });
+  res.json(session);
 });
 
 authRouter.post('/login', authLimiter, validate(loginSchema), signIn);
@@ -261,7 +272,16 @@ authRouter.post('/google', authLimiter, validate(googleSchema), asyncHandler(asy
   const target = applyEscrowReturn(user, req.body.returnTo);
   if (target) await user.save();
   if (accountCreated) recordAuthFunnelEvent('registration_completed', user._id, target);
-  res.json({ ...await issueSession(res, user), accountCreated });
+  const session = await issueSession(res, user);
+  await notifyUser({
+    io: req.app.get('io'),
+    recipientId: user._id,
+    type: 'login',
+    title: 'New sign-in',
+    message: `You signed in to Escrit at ${new Date().toLocaleString()}.`,
+    href: '/account/notifications',
+  });
+  res.json({ ...session, accountCreated });
 }));
 
 // --- Email OTP verification ------------------------------------------
@@ -306,7 +326,7 @@ authRouter.post(
 );
 
 // --- Forgot / reset password ------------------------------------------
-const forgotPasswordSchema = Joi.object({ email: Joi.string().email().required() });
+const forgotPasswordSchema = Joi.object({ email: normalizedEmailSchema });
 
 authRouter.post(
   '/forgot-password',
@@ -331,7 +351,7 @@ authRouter.post(
 );
 
 const resetPasswordSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: normalizedEmailSchema,
   token: Joi.string().required(),
   password: Joi.string().min(8).required(),
 });
