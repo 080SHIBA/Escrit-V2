@@ -27,7 +27,10 @@ import { env } from '../config/env.js';
 import { generateReference } from '../utils/reference.js';
 
 export const cartCheckoutRouter = Router();
-cartCheckoutRouter.use(requireAuth);
+cartCheckoutRouter.use('/cart', requireAuth);
+cartCheckoutRouter.use('/checkout', requireAuth);
+cartCheckoutRouter.use('/me/recently-viewed', requireAuth);
+cartCheckoutRouter.use('/listings/similar', requireAuth);
 
 const listingTypes = ['product', 'course', 'service'];
 const cartListingTypes = ['product', 'course'];

@@ -235,7 +235,7 @@ export function ListingPreview({ form, photos }) {
       ? `Delivered in ${form.deliveryTime || '…'}`
       : `${{ 'self-paced-videos': 'Self-paced videos', 'live-cohort': 'Live cohort', 'pdf-ebook': 'PDF or ebook' }[form.format]} · ${form.level} · ${form.duration || 'Duration not set'}`;
   return (
-    <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+    <aside className="min-w-0 min-[860px]:sticky min-[860px]:top-6 min-[860px]:self-start">
       <h2 className="mb-3 font-display text-xl">Live preview</h2>
       <article className="overflow-hidden rounded-2xl border border-line bg-paper shadow-card">
         <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-paper-2">
@@ -386,7 +386,7 @@ export function ListProductPage({ embedded = false }) {
       {preferencesState.error && <p role="alert" className="mb-4 rounded-xl border border-dispute/30 bg-dispute-soft p-3 text-sm text-dispute">Transaction preferences could not be loaded. Reload this page before publishing so the account defaults are applied correctly. {preferencesState.error}</p>}
       {create.error && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dispute/30 bg-dispute-soft p-3 text-sm text-dispute"><p role="alert">{create.error}</p><button type="button" onClick={publish} className="min-h-11 rounded-lg border border-dispute/40 px-3 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Retry publish</button></div>}
 
-      <div className="grid items-start gap-6 lg:gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
+      <div className="grid items-start gap-6 lg:gap-8 min-[860px]:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
         <div className="space-y-5 lg:space-y-6">
           <ListingForm
             form={draft.form}

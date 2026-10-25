@@ -530,7 +530,7 @@ export default function Layout({ children }) {
                 ? 'max-w-7xl px-0 py-8 mx-auto'
                 : isAdminPage
                   ? 'max-w-none px-4 sm:px-6 py-8 mx-auto'
-                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' || location.pathname === '/cart' || isMarketplaceCategoryPage ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : isStorefrontListPage ? 'max-w-2xl lg:max-w-none' : 'max-w-2xl'}`
+                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' || location.pathname === '/cart' || isMarketplaceCategoryPage ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : isStorefrontListPage ? 'max-w-2xl min-[860px]:max-w-none' : 'max-w-2xl'}`
         } ${isAuthed && !isBuyerSide && !isOnboarding ? 'pb-24 md:pb-8' : ''}`}
       >
         {children}
