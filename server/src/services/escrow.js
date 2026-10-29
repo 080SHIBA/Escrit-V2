@@ -11,7 +11,7 @@ import * as paymentProvider from './paymentProvider.js';
 import { Product } from '../models/Product.js';
 import { getPlatformSettings } from './platformSettings.js';
 import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
-import { isAutomaticReleaseDue } from '../../../shared/orderState.js';
+import { isAutomaticReleaseDue } from '../shared/orderState.js';
 import { notifyPaymentConfirmed } from './notificationEvents.js';
 import { ServiceOrder } from '../models/ServiceOrder.js';
 

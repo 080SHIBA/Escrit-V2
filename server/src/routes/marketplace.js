@@ -23,7 +23,7 @@ import { SellerReport } from '../models/SellerReport.js';
 import { publicSellerName, sanitizePublicSeller } from '../utils/publicSellerName.js';
 import { notifyUser } from '../services/notifications.js';
 import { notifyListingSubmitted } from '../services/notificationEvents.js';
-import { DEFAULT_RELEASE_WINDOW_HOURS } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS } from '../shared/releaseConditions.js';
 
 export const marketplaceRouter = Router();
 export const listingWorkflowRouter = Router();

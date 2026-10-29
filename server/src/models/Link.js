@@ -2,7 +2,7 @@
 // escrow status of its own. Each checkout creates a Transaction, which
 // holds all per-purchase state, so one link can serve many buyers.
 import mongoose from 'mongoose';
-import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../shared/releaseConditions.js';
 
 const releaseWindowValues = RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours);
 

@@ -16,7 +16,7 @@ import { ensureCheckoutPrice } from '../services/pricing.js';
 import { getPaymentProviderName, initializeTransaction } from '../services/paymentProvider.js';
 import { generateReference } from '../utils/reference.js';
 import { env } from '../config/env.js';
-import { deliveryReleaseTime } from '../../../shared/orderState.js';
+import { deliveryReleaseTime } from '../shared/orderState.js';
 import { completeDirectService, raiseDispute, releaseOnBuyerConfirmation, TX_STATUS } from '../services/escrow.js';
 import { notifyUser } from '../services/notifications.js';
 import {

@@ -6,7 +6,7 @@ import { BankIcon } from '../../components/icons.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import SpotlightTour from '../../components/SpotlightTour.jsx';
 import PhotoField from '../../components/PhotoField.jsx';
-import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS, releaseRuleText } from '../../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS, releaseRuleText } from '../../shared/releaseConditions.js';
 
 // One step per field, in the order they appear on the form.
 const TOUR_STEPS = [

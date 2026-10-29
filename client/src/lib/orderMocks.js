@@ -1,4 +1,4 @@
-import { deliveryReleaseTime, transitionOrder } from '../../../shared/orderState.js';
+import { deliveryReleaseTime, transitionOrder } from '../shared/orderState.js';
 
 const now = Date.now();
 const hoursAgo = (hours) => new Date(now - hours * 60 * 60 * 1000).toISOString();

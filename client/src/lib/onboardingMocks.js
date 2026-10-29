@@ -1,4 +1,4 @@
-import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../shared/releaseConditions.js';
 
 const delay = () => new Promise((resolve) => window.setTimeout(resolve, 100));
 const PREFIX = 'escrit:onboarding:';

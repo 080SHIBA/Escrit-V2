@@ -8,7 +8,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { ensureCheckoutPrice } from '../services/pricing.js';
 import { classifyEscrowPreviewState } from '../utils/escrowPreviewState.js';
-import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../shared/releaseConditions.js';
 
 export const escrowLinksRouter = Router();
 escrowLinksRouter.use(requireAuth);
