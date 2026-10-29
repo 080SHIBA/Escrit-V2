@@ -1,2 +1,6 @@
 docs/
 # README.md
+node-modules/
+node_modules/
+.hallmark/
+design.md
