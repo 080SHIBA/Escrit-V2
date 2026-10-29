@@ -1,5 +1,6 @@
 import { BadgeCheck, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ChatNowButton from '../ChatNowButton.jsx';
 
 function SellerListings({ listings }) {
   return (
@@ -24,7 +25,7 @@ function SellerListings({ listings }) {
   );
 }
 
-export default function SellerSection({ listing, sellerListings }) {
+export default function SellerSection({ listing, sellerListings, isOwn = false }) {
   const seller = listing.seller || {};
   const name = listing.sellerName || seller.displayName || 'Escrit seller';
   const storefront = `/marketplace/seller/${encodeURIComponent(listing.sellerId || seller.id || seller._id)}`;
@@ -43,7 +44,18 @@ export default function SellerSection({ listing, sellerListings }) {
           </p>
           {seller.bio && <p className="mt-2 text-sm leading-5 text-ink/65">{seller.bio}</p>}
         </div>
-        <Link to={storefront} className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">View storefront</Link>
+        <div className="flex flex-wrap gap-2">
+          {!isOwn && ['service', 'product'].includes(listing.type) && (
+            <ChatNowButton
+              sellerId={listing.sellerId || seller.id || seller._id}
+              listingId={listing.id || listing._id}
+              listingType={listing.type}
+              title={listing.title}
+              sellerName={name}
+            />
+          )}
+          <Link to={storefront} className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">View storefront</Link>
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink/65">
         <span>{Number(seller.liveListingCount || 0)} live listings</span>

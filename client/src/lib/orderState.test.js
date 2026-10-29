@@ -5,6 +5,7 @@ import {
   deliveryReleaseTime,
   filterOrders,
   isAutomaticReleaseDue,
+  orderListingType,
   transitionOrder,
 } from '../../../shared/orderState.js';
 
@@ -31,6 +32,14 @@ test('blocks invalid role, stage, and disputed-order transitions', () => {
   ]) {
     assert.throws(() => transitionOrder(candidate, action, role));
   }
+});
+
+test('resolves order categories from listing type and legacy fulfillment type', () => {
+  assert.equal(orderListingType({ listingType: 'course' }), 'course');
+  assert.equal(orderListingType({ listingType: 'service', fulfillmentType: 'product' }), 'service');
+  assert.equal(orderListingType({ fulfillmentType: 'course' }), 'course');
+  assert.equal(orderListingType({}), 'product');
+  assert.equal(orderListingType({ listingType: 'unknown' }), 'product');
 });
 
 test('filters orders and counts each unfiltered status category', () => {

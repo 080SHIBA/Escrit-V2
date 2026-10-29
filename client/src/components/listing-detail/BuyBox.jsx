@@ -45,6 +45,9 @@ export default function BuyBox({
   const [selectedSlot, setSelectedSlot] = useState('');
   const [selectedPackage, setSelectedPackage] = useState(listing.packages?.[0]?.key || '');
   const [selectedAddOns, setSelectedAddOns] = useState([]);
+  const [buyerResponses, setBuyerResponses] = useState({});
+  const [deliveryMethod, setDeliveryMethod] = useState(listing.deliveryMethods?.[0] || 'online');
+  const [serviceLocation, setServiceLocation] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [directPaymentRiskAccepted, setDirectPaymentRiskAccepted] = useState(false);
   const [serviceBusy, setServiceBusy] = useState(false);
@@ -79,6 +82,17 @@ export default function BuyBox({
     if (listing.type === 'service') setSelectedPackage(listing.packages?.[0]?.key || '');
   }, [listing.id, listing.type, listing.packages]);
 
+  useEffect(() => {
+    if (listing.type !== 'service') return;
+    const methods = listing.deliveryMethods || [];
+    const fallback = listing.deliveryMode === 'in-person'
+      ? 'provider_location'
+      : listing.deliveryMode === 'hybrid'
+        ? 'online'
+        : serviceModel === 'appointment' ? 'online' : 'remote_deliverable';
+    setDeliveryMethod(methods.includes(deliveryMethod) ? deliveryMethod : methods[0] || fallback);
+  }, [listing.id, listing.type, listing.deliveryMethods, listing.deliveryMode, serviceModel]);
+
   async function placeServiceOrder() {
     if (status !== 'authed') {
       navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
@@ -100,29 +114,65 @@ export default function BuyBox({
       setServiceError('Choose an available appointment time.');
       return;
     }
+    for (const requirement of listing.buyerRequirements || []) {
+      const value = buyerResponses[requirement.key];
+      if (requirement.required && !(Array.isArray(value) ? value.length : String(value || '').trim())) {
+        setServiceError(`Complete the required field: ${requirement.label}.`);
+        return;
+      }
+    }
+    if (deliveryMethod === 'buyer_location' && !serviceLocation.trim()) {
+      setServiceError('Enter the location where the service should be delivered.');
+      return;
+    }
     setServiceBusy(true);
     setServiceError('');
     try {
-      if (!serviceIdempotencyKey.current) {
-        serviceIdempotencyKey.current = window.crypto?.randomUUID?.() || `service-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      }
-      const { order } = await api.createServiceOrder(listing.id, {
-        idempotencyKey: serviceIdempotencyKey.current,
+      const requestPayload = {
         appointmentAt: selectedSlot || null,
         packageKey: selectedPackage,
         addOnKeys: selectedAddOns,
         paymentMode: paymentOption,
         directPaymentRiskAccepted: paymentOption === 'direct' && directPaymentRiskAccepted,
-        deliveryMethod: listing.deliveryMode === 'in-person' ? 'provider_location' : 'online',
+        deliveryMethod,
+        location: serviceLocation.trim(),
+        buyerResponses,
         termsAccepted: true,
+      };
+      const fingerprint = JSON.stringify(requestPayload);
+      const storageKey = `escrit:service-order:${listing.id}`;
+      let savedIntents = [];
+      try {
+        savedIntents = JSON.parse(window.sessionStorage.getItem(storageKey) || '[]');
+        if (!Array.isArray(savedIntents)) savedIntents = [];
+      } catch {
+        setServiceError('Could not restore the saved order attempt. Clear this listing’s service-order session data and try again.');
+        setServiceBusy(false);
+        return;
+      }
+      const existingIntent = savedIntents.find((intent) => intent.fingerprint === fingerprint);
+      serviceIdempotencyKey.current = existingIntent?.key || window.crypto?.randomUUID?.() || `service-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (!existingIntent) {
+        try {
+          window.sessionStorage.setItem(storageKey, JSON.stringify([
+            { fingerprint, key: serviceIdempotencyKey.current },
+            ...savedIntents.filter((intent) => intent.fingerprint !== fingerprint),
+          ].slice(0, 20)));
+        } catch {
+          setServiceError('This browser could not save a safe retry key. Enable session storage before submitting the service order.');
+          setServiceBusy(false);
+          return;
+        }
+      }
+      const { order } = await api.createServiceOrder(listing.id, {
+        idempotencyKey: serviceIdempotencyKey.current,
+        ...requestPayload,
       });
       if (order.status === 'pending_approval') {
-        serviceIdempotencyKey.current = '';
         onToast('Appointment request sent. The provider must confirm it before payment.');
         return;
       }
       const checkout = await api.checkoutServiceOrder(order._id);
-      serviceIdempotencyKey.current = '';
       window.location.assign(checkout.authorizationUrl);
     } catch (error) {
       setServiceError(error.message || 'We could not create this service order. Please try again.');
@@ -205,8 +255,9 @@ export default function BuyBox({
       {listing.type === 'service' && serviceModel === 'appointment' && (
         <div className="mt-4 space-y-3 rounded-lg border border-line p-3">
           <label className="block text-sm font-medium">Choose an appointment date
-            <input type="date" value={serviceDate} min={serviceDate} onChange={(event) => setServiceDate(event.target.value)} className="mt-2 min-h-11 w-full border border-line bg-input px-3" />
+            <input type="date" value={serviceDate} min={serviceDate} max={new Date(Date.now() + Number(listing.maxAdvanceBookingDays || 90) * 86_400_000).toISOString().slice(0, 10)} onChange={(event) => setServiceDate(event.target.value)} className="mt-2 min-h-11 w-full border border-line bg-input px-3" />
           </label>
+          <p className="text-xs text-ink/55">{listing.instantConfirmation ? 'Appointments are confirmed instantly.' : 'The provider reviews and confirms the appointment before payment.'} Buffer time: {listing.bufferMinutes || 0} minutes.</p>
           <fieldset>
             <legend className="text-sm font-medium">Available times ({listing.timeZone || 'seller time zone'})</legend>
             {serviceLoading ? <p className="mt-2 text-xs text-ink/55">Loading availability…</p> : serviceSlots.length ? (
@@ -233,6 +284,33 @@ export default function BuyBox({
           </label>)}
         </div>
       )}
+      {listing.type === 'service' && (
+        <div className="mt-4 space-y-3 rounded-lg border border-line p-3">
+          {listing.deliveryMethods?.length > 0 && <label className="block text-sm font-medium">Delivery method
+            <select value={deliveryMethod} onChange={(event) => setDeliveryMethod(event.target.value)} className="mt-2 min-h-11 w-full border border-line bg-input px-3">
+              {listing.deliveryMethods.map((method) => <option key={method} value={method}>{({ online: 'Online', provider_location: 'At provider location', buyer_location: 'At my location', remote_deliverable: 'Remote deliverable' })[method] || method}</option>)}
+            </select>
+          </label>}
+          {deliveryMethod === 'buyer_location' && <label className="block text-sm font-medium">Service location
+            <input required maxLength={500} value={serviceLocation} onChange={(event) => setServiceLocation(event.target.value)} className="mt-2 min-h-11 w-full border border-line bg-input px-3" placeholder={listing.serviceArea || 'Enter your address or area'} />
+            {listing.travelFeeNaira > 0 && <span className="mt-1 block text-xs text-ink/55">Travel fee: ₦{Number(listing.travelFeeNaira).toLocaleString()}</span>}
+          </label>}
+          {(listing.buyerRequirements || []).map((requirement) => {
+            const value = buyerResponses[requirement.key] || (requirement.type === 'multi_select' ? [] : '');
+            return <label key={requirement.key} className="block text-sm font-medium">{requirement.label}{requirement.required ? ' *' : ''}
+              {requirement.type === 'long_text'
+                ? <textarea required={requirement.required} maxLength={5000} rows={3} value={value} onChange={(event) => setBuyerResponses((current) => ({ ...current, [requirement.key]: event.target.value }))} className="mt-2 w-full border border-line bg-input px-3 py-2" />
+                : ['single_select', 'file', 'link'].includes(requirement.type)
+                  ? requirement.type === 'single_select'
+                    ? <select required={requirement.required} value={value} onChange={(event) => setBuyerResponses((current) => ({ ...current, [requirement.key]: event.target.value }))} className="mt-2 min-h-11 w-full border border-line bg-input px-3">{!requirement.required && <option value="">Choose an option</option>}{(requirement.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
+                    : <input required={requirement.required} type={requirement.type === 'file' ? 'url' : 'url'} maxLength={1000} value={value} onChange={(event) => setBuyerResponses((current) => ({ ...current, [requirement.key]: event.target.value }))} className="mt-2 min-h-11 w-full border border-line bg-input px-3" placeholder={requirement.type === 'file' ? 'Secure file URL' : 'https://'} />
+                  : requirement.type === 'multi_select'
+                    ? <span className="mt-2 grid gap-1">{(requirement.options || []).map((option) => <span key={option} className="flex min-h-11 items-center gap-2 font-normal"><input type="checkbox" checked={value.includes(option)} onChange={(event) => setBuyerResponses((current) => ({ ...current, [requirement.key]: event.target.checked ? [...value, option] : value.filter((entry) => entry !== option) }))} />{option}</span>)}</span>
+                    : <input required={requirement.required} maxLength={500} value={value} onChange={(event) => setBuyerResponses((current) => ({ ...current, [requirement.key]: event.target.value }))} className="mt-2 min-h-11 w-full border border-line bg-input px-3" />}
+            </label>;
+          })}
+        </div>
+      )}
 
       <div className="mt-5 border-t border-line pt-5">
         <PaymentOptionPicker options={listing.paymentOptions} value={paymentOption} onChange={onPaymentOptionChange} />
@@ -257,7 +335,7 @@ export default function BuyBox({
           <label className="flex items-start gap-2 text-xs leading-5 text-ink/65"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1" />I reviewed the service scope, cancellation terms and payment method.</label>
           {paymentOption === 'direct' && <label className="flex min-h-11 items-start gap-2 text-xs leading-5 text-ink/65"><input type="checkbox" checked={directPaymentRiskAccepted} onChange={(event) => setDirectPaymentRiskAccepted(event.target.checked)} className="mt-1" />I understand that direct payment goes to the provider, Escrit cannot hold or recover it, and reporting does not guarantee a refund.</label>}
           <button type="button" onClick={placeServiceOrder} disabled={serviceBusy || !paymentOption || !termsAccepted || (paymentOption === 'direct' && !directPaymentRiskAccepted) || (serviceModel === 'appointment' && (!selectedSlot || serviceLoading)) || (serviceModel === 'fixed_scope' && !selectedPackage)} className="min-h-11 rounded-lg bg-ink px-4 text-sm font-semibold text-paper hover:bg-ink/90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
-            {serviceBusy ? 'Preparing order…' : serviceModel === 'appointment' ? 'Request appointment' : 'Continue to payment'}
+            {serviceBusy ? 'Preparing order…' : serviceModel === 'appointment' ? 'Book now' : 'Order service'}
           </button>
           {serviceError && <p role="alert" className="text-sm text-dispute">{serviceError}</p>}
         </> : null}

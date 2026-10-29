@@ -187,6 +187,21 @@ export default function Dashboard() {
     }
   }
 
+  async function archiveServiceListing(listing) {
+    setUpdatingListingId(String(listing._id));
+    setListingUpdateError('');
+    try {
+      const { item } = await api.archiveMyServiceListing(listing._id, !listing.archivedAt);
+      setMyListings((current) => current.map((entry) => entry._id === item._id
+        ? { ...entry, isActive: item.isActive, archivedAt: item.archivedAt }
+        : entry));
+    } catch (err) {
+      setListingUpdateError(err.message || 'Unable to archive this service listing.');
+    } finally {
+      setUpdatingListingId(null);
+    }
+  }
+
   const liveListings = myListings?.filter((item) => item.isActive && item.isVerified).length;
   const hasFirstListing = myListings?.length > 0 || links?.length > 0;
   const onboardingSteps = [
@@ -531,6 +546,7 @@ export default function Dashboard() {
                 linksUnavailable={Boolean(linksError && links === null)}
                 isUpdating={updatingListingId === String(item._id)}
                 onToggle={() => toggleListing(item)}
+                onArchive={() => archiveServiceListing(item)}
               />
             ))}
           </ul>
@@ -708,7 +724,7 @@ function PerformanceMetric({ label, value, detail, loading }) {
   );
 }
 
-function MarketplaceListingRow({ listing, linkedOrder, linksLoading, linksUnavailable, isUpdating, onToggle }) {
+function MarketplaceListingRow({ listing, linkedOrder, linksLoading, linksUnavailable, isUpdating, onToggle, onArchive }) {
   const isPublic = listing.isVerified && listing.isActive;
   const detailPath = `/marketplace/${listing.listingType}/${listing._id}`;
   const priceNaira = listing.price ?? listing.basePrice;
@@ -756,22 +772,44 @@ function MarketplaceListingRow({ listing, linkedOrder, linksLoading, linksUnavai
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-3">{content}</div>
       )}
-      {listing.isVerified && (
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={isUpdating}
-          aria-label={`${listing.isActive ? 'Pause' : 'Reactivate'} ${listing.title}`}
-          className="min-h-10 shrink-0 rounded-lg border border-line px-2.5 text-xs font-medium transition-colors hover:bg-paper-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus active:translate-y-px disabled:opacity-50 sm:px-3"
-        >
-          {isUpdating ? 'Updating…' : listing.isActive ? 'Pause' : 'Reactivate'}
-        </button>
-      )}
+      <div className="flex shrink-0 items-center gap-1">
+        {listing.listingType === 'service' && (
+          <Link
+            to={`/marketplace/new/service?edit=${encodeURIComponent(listing._id)}`}
+            className="inline-flex min-h-11 items-center rounded-lg px-2.5 text-xs font-medium underline underline-offset-4 hover:bg-paper-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus sm:px-3"
+          >
+            Edit
+          </Link>
+        )}
+        {listing.isVerified && !listing.archivedAt && (
+          <button
+            type="button"
+            onClick={onToggle}
+            disabled={isUpdating}
+            aria-label={`${listing.isActive ? 'Pause' : 'Reactivate'} ${listing.title}`}
+            className="min-h-11 rounded-lg border border-line px-2.5 text-xs font-medium transition-colors hover:bg-paper-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus active:translate-y-px disabled:opacity-50 sm:px-3"
+          >
+            {isUpdating ? 'Updating…' : listing.isActive ? 'Pause' : 'Reactivate'}
+          </button>
+        )}
+        {listing.listingType === 'service' && (
+          <button
+            type="button"
+            onClick={onArchive}
+            disabled={isUpdating}
+            aria-label={`${listing.archivedAt ? 'Restore' : 'Archive'} ${listing.title}`}
+            className="min-h-11 rounded-lg border border-line px-2.5 text-xs font-medium transition-colors hover:bg-paper-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus active:translate-y-px disabled:opacity-50 sm:px-3"
+          >
+            {isUpdating ? 'Updating…' : listing.archivedAt ? 'Restore' : 'Archive'}
+          </button>
+        )}
+      </div>
     </li>
   );
 }
 
 function listingStatus(listing) {
+  if (listing.archivedAt) return 'Archived';
   if (listing.isVerified && listing.isActive) return 'Live';
   if (listing.isVerified) return 'Paused';
   if (listing.reviewStatus === 'rejected' || listing.categoryReviewStatus === 'rejected') return 'Needs changes';

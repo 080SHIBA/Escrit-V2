@@ -5,7 +5,7 @@ import ListingGrid from '../components/marketplace/ListingGrid.jsx';
 import SearchBar from '../components/marketplace/SearchBar.jsx';
 import TypeSwitch from '../components/marketplace/TypeSwitch.jsx';
 import { useAuthContext } from '../lib/AuthContext.jsx';
-import { filterListings, MARKETPLACE_CATEGORIES, sortListings } from '../lib/marketplaceState.js';
+import { filterListings, filterServiceListings, MARKETPLACE_CATEGORIES_BY_TYPE, sortListings } from '../lib/marketplaceState.js';
 import { usePageTitle } from '../lib/usePageTitle.js';
 import { getDefaultPaymentOption } from '../lib/listingDetailState.js';
 import { useCart } from '../hooks/useCart.js';
@@ -17,9 +17,15 @@ function readFilters(searchParams) {
   const sort = searchParams.get('sort') || 'newest';
   return {
     query: searchParams.get('q') || '',
-    category: ['all', ...MARKETPLACE_CATEGORIES].includes(category) ? category : 'all',
+    category,
     minRating: searchParams.get('minRating') === '4.5' ? '4.5' : '',
     sort: ['newest', 'price-low', 'price-high', 'top-rated'].includes(sort) ? sort : 'newest',
+    minPrice: searchParams.get('minPrice') || '',
+    maxPrice: searchParams.get('maxPrice') || '',
+    serviceModel: ['appointment', 'fixed_scope', 'custom_quote'].includes(searchParams.get('serviceModel')) ? searchParams.get('serviceModel') : 'all',
+    serviceLocation: ['remote', 'in-person', 'buyer-location'].includes(searchParams.get('serviceLocation')) ? searchParams.get('serviceLocation') : 'all',
+    appointmentSchedule: searchParams.get('appointmentSchedule') === 'true',
+    verifiedProviders: searchParams.get('verifiedProviders') === 'true',
   };
 }
 
@@ -31,8 +37,8 @@ const PAGE_CONTENT = {
   },
   service: {
     title: 'Services',
-    description: 'Find skilled people for the work you need. Review the details and agree timing with the seller.',
-    action: 'Offer a service',
+    description: 'Book a scheduled service, order a defined package, or request a custom quote. Review each listing’s delivery and payment terms.',
+    action: 'Create service',
   },
   course: {
     title: 'Courses',
@@ -49,7 +55,7 @@ export default function MarketplacePage({ type = 'product' }) {
   const [queryInput, setQueryInput] = useState(filters.query);
   const [toast, setToast] = useState('');
   const { seller } = useAuthContext();
-  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings({ pageSize: 100 });
+  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings({ pageSize: 24, type });
   const { cartIds, addToCart } = useCart();
   const { savedIds, toggleSaved } = useSaved();
   const ownSellerId = seller?._id || seller?.id || seller?.sellerId || '';
@@ -87,6 +93,14 @@ export default function MarketplacePage({ type = 'product' }) {
     }, { replace: true });
   }
 
+  const categories = useMemo(
+    () => [...new Set([
+      ...(MARKETPLACE_CATEGORIES_BY_TYPE[type] || MARKETPLACE_CATEGORIES_BY_TYPE.product),
+      ...listings.map((listing) => listing.category).filter(Boolean),
+    ])].sort(),
+    [listings, type]
+  );
+
   function isOwnListing(listing) {
     return Boolean(ownSellerId && listing.sellerId === ownSellerId);
   }
@@ -120,9 +134,17 @@ export default function MarketplacePage({ type = 'product' }) {
       type,
       category: filters.category,
       minRating: filters.minRating,
+      minPrice: filters.minPrice,
+      maxPrice: filters.maxPrice,
     });
-    return sortListings(matching, filters.sort);
-  }, [filters.category, filters.minRating, filters.query, filters.sort, listings, type]);
+    const serviceFiltered = type === 'service' ? filterServiceListings(matching, {
+      model: filters.serviceModel,
+      location: filters.serviceLocation,
+      appointmentSchedule: filters.appointmentSchedule,
+      verifiedProviders: filters.verifiedProviders,
+    }) : matching;
+    return sortListings(serviceFiltered, filters.sort);
+  }, [filters, listings, type]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
@@ -140,7 +162,7 @@ export default function MarketplacePage({ type = 'product' }) {
           </p>
         </div>
         <Link
-          to="/account/storefront?tab=list"
+          to={type === 'service' ? '/marketplace/new/service' : '/account/storefront?tab=list'}
           className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
         >
           {page.action}
@@ -161,7 +183,36 @@ export default function MarketplacePage({ type = 'product' }) {
           onRatingChange={(value) => updateFilter('minRating', value)}
           category={filters.category}
           onCategoryChange={(value) => updateFilter('category', value)}
+          categories={categories}
         />
+        {type === 'service' && (
+          <div className="grid gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-xs text-ink/65">Service model
+              <select value={filters.serviceModel} onChange={(event) => updateFilter('serviceModel', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-input px-3 text-sm">
+                <option value="all">All service models</option><option value="appointment">Appointment</option><option value="fixed_scope">Fixed scope</option><option value="custom_quote">Custom quote</option>
+              </select>
+            </label>
+            <label className="text-xs text-ink/65">Location
+              <select value={filters.serviceLocation} onChange={(event) => updateFilter('serviceLocation', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-input px-3 text-sm">
+                <option value="all">Any location</option><option value="remote">Remote</option><option value="in-person">In person</option><option value="buyer-location">At buyer location</option>
+              </select>
+            </label>
+            <label className="text-xs text-ink/65">Minimum price (₦)
+              <input type="number" min="0" value={filters.minPrice} onChange={(event) => updateFilter('minPrice', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-input px-3 text-sm" placeholder="Any" />
+            </label>
+            <label className="text-xs text-ink/65">Maximum price (₦)
+              <input type="number" min="0" value={filters.maxPrice} onChange={(event) => updateFilter('maxPrice', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-input px-3 text-sm" placeholder="Any" />
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm text-ink/65">
+              <input type="checkbox" checked={filters.appointmentSchedule} onChange={(event) => updateFilter('appointmentSchedule', event.target.checked ? 'true' : '')} />
+              Has published appointment hours
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm text-ink/65">
+              <input type="checkbox" checked={filters.verifiedProviders} onChange={(event) => updateFilter('verifiedProviders', event.target.checked ? 'true' : '')} />
+              Verified providers only
+            </label>
+          </div>
+        )}
       </section>
 
       <div className="my-5 flex min-h-6 items-center justify-between border-t border-line pt-4 text-sm text-ink/60">

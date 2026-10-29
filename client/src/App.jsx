@@ -29,8 +29,8 @@ import MarketplaceListing from './pages/MarketplaceListing.jsx';
 import ListingDetailPage from './pages/ListingDetailPage.jsx';
 import SellerStorefront from './pages/SellerStorefront.jsx';
 import BuyerOrders from './pages/buyer/BuyerOrders.jsx';
+import ChatsPage from './pages/ChatsPage.jsx';
 import ServiceOffers from './pages/buyer/ServiceOffers.jsx';
-import ServiceOrders from './pages/buyer/ServiceOrders.jsx';
 import ProductOffers from './pages/buyer/ProductOffers.jsx';
 import PlatformCredits from './pages/seller/PlatformCredits.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
@@ -42,6 +42,14 @@ import { useAuthContext } from './lib/AuthContext.jsx';
 function LegacyAuthRedirect({ to }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}`} replace />;
+}
+
+function ServiceOrdersRedirect() {
+  const [searchParams] = useSearchParams();
+  const nextParams = new URLSearchParams(searchParams);
+  nextParams.set('type', 'service');
+  const query = nextParams.toString();
+  return <Navigate to={{ pathname: '/account/orders', search: query ? `?${query}` : '' }} replace />;
 }
 
 function MarketplaceRedirect() {
@@ -113,9 +121,10 @@ export default function App() {
         <Route path="/account/cart" element={<Navigate to="/cart" replace />} />
         <Route path="/account/favorites" element={<RequireAuth><BuyerLists mode="favorites" /></RequireAuth>} />
         <Route path="/account/orders" element={orderMocksEnabled ? <BuyerOrders /> : <RequireAuth><BuyerOrders /></RequireAuth>} />
+        <Route path="/account/chats" element={<RequireAuth><ChatsPage /></RequireAuth>} />
         <Route path="/account/offers" element={<RequireAuth><ServiceOffers /></RequireAuth>} />
         <Route path="/account/offers/:offerId" element={<RequireAuth><ServiceOffers /></RequireAuth>} />
-        <Route path="/account/service-orders" element={<RequireAuth><ServiceOrders /></RequireAuth>} />
+        <Route path="/account/service-orders" element={<ServiceOrdersRedirect />} />
         <Route path="/account/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
         <Route path="/account/storefront" element={<RequireAuth><SellerStorefront /></RequireAuth>} />
         <Route path="/account/price-offers" element={<RequireAuth><ProductOffers /></RequireAuth>} />

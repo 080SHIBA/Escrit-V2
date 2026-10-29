@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
-export function useListings({ pageSize = 6 } = {}) {
+export function useListings({ pageSize = 6, type } = {}) {
   const [listings, setListings] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -12,7 +12,7 @@ export function useListings({ pageSize = 6 } = {}) {
     setLoading(true);
     setError('');
     try {
-      const result = await api.getListings({ limit: pageSize });
+      const result = await api.getListings({ limit: pageSize, type });
       setListings(result.items || []);
       setCursor(result.nextCursor || null);
     } catch {
@@ -20,11 +20,11 @@ export function useListings({ pageSize = 6 } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [pageSize]);
+  }, [pageSize, type]);
 
   useEffect(() => {
     let active = true;
-    api.getListings({ limit: pageSize })
+    api.getListings({ limit: pageSize, type })
       .then((result) => {
         if (active) {
           setListings(result.items || []);
@@ -38,14 +38,14 @@ export function useListings({ pageSize = 6 } = {}) {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [pageSize]);
+  }, [pageSize, type]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     setError('');
     try {
-      const result = await api.getListings({ cursor, limit: pageSize });
+      const result = await api.getListings({ cursor, limit: pageSize, type });
       setListings((current) => [...current, ...(result.items || [])]);
       setCursor(result.nextCursor || null);
     } catch {
@@ -53,7 +53,7 @@ export function useListings({ pageSize = 6 } = {}) {
     } finally {
       setLoadingMore(false);
     }
-  }, [cursor, loadingMore, pageSize]);
+  }, [cursor, loadingMore, pageSize, type]);
 
   const updateListing = useCallback((id, updates) => {
     setListings((current) => current.map((listing) => listing.id === id ? { ...listing, ...updates } : listing));

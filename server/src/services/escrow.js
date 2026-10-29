@@ -14,6 +14,7 @@ import { PlatformCreditEntry } from '../models/PlatformCreditEntry.js';
 import { isAutomaticReleaseDue } from '../../../shared/orderState.js';
 import { notifyPaymentConfirmed } from './notificationEvents.js';
 import { ServiceOrder } from '../models/ServiceOrder.js';
+import { ServiceOffer } from '../models/ServiceOffer.js';
 
 /**
  * CREATED -> PAID_HELD. Called after a verified payment success (webhook
@@ -66,7 +67,7 @@ async function verifyCheckoutGroup(tx, io) {
     entry.paymentProviderTransactionId = String(verified.id);
     const paid = entry.checkoutMode === 'direct' ? await settleDirectPurchase(entry) : await markPaidAndHeld(entry);
     if (entry.serviceOrderId && [TX_STATUS.PAID_HELD, TX_STATUS.DIRECT_PAID].includes(paid.status)) {
-      await ServiceOrder.updateOne(
+      const updated = await ServiceOrder.updateOne(
         { _id: entry.serviceOrderId, status: 'awaiting_payment', paymentStatus: { $ne: 'paid' } },
         {
           $set: {
@@ -83,6 +84,14 @@ async function verifyCheckoutGroup(tx, io) {
           },
         }
       );
+      if (updated.modifiedCount) {
+        const [serviceOrder, offer] = await Promise.all([
+          ServiceOrder.findById(entry.serviceOrderId)
+            .select('status paymentStatus paymentMode amountKobo termsSnapshot deliverables deliveryNote deliveredAt updatedAt'),
+          ServiceOffer.findOne({ acceptedOrderId: entry.serviceOrderId }).select('_id'),
+        ]);
+        if (serviceOrder && offer) io?.to(`offer:${offer.id}`).emit('conversation:order', serviceOrder);
+      }
     }
     if ([TX_STATUS.PAID_HELD, TX_STATUS.DIRECT_PAID].includes(paid.status)) {
       await notifyPaymentConfirmed({

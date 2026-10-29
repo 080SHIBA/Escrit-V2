@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allocateSlotReservationLane,
   activeServiceReservationStatuses,
   localDateTimeToUtc,
   overlaps,
@@ -28,6 +29,19 @@ test('appointment reservations lock every 15-minute slot including buffer time',
       '2025-01-15T09:45:00.000Z',
       '2025-01-15T10:00:00.000Z',
     ]
+  );
+});
+
+test('appointment capacity allocates distinct atomic lanes and respects occupied overlapping slots', () => {
+  const keys = slotReservationKeys('2025-01-15T09:00:00.000Z', 60, 15);
+  const firstLane = allocateSlotReservationLane(keys, [], 2);
+  assert.equal(firstLane[0], `${keys[0]}|capacity:0`);
+  const secondLane = allocateSlotReservationLane(keys, [{ slotKeys: firstLane }], 2);
+  assert.equal(secondLane[0], `${keys[0]}|capacity:1`);
+  assert.equal(allocateSlotReservationLane(keys, [{ slotKeys: firstLane }, { slotKeys: secondLane }], 2), null);
+  assert.equal(
+    allocateSlotReservationLane(keys.slice(1), [{ slotKeys: firstLane }], 2)[0],
+    `${keys[1]}|capacity:1`
   );
 });
 

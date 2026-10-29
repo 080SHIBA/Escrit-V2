@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { friendlyListingError, formatNaira, LISTING_CATEGORIES, listingStrength, nextStrengthTip, validateListing } from '../../lib/listingState.js';
@@ -15,6 +15,7 @@ import {
   resolveListingFulfilment,
   resolveListingPaymentOptions,
 } from '../../lib/transactionPreferences.js';
+import './ListProductPage.css';
 
 const FIELD_CLASS = 'mt-1 min-h-11 w-full rounded-xl border border-line bg-input px-3 py-2 text-base text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
 const CARD_CLASS = 'rounded-2xl border border-line bg-paper p-5 shadow-card sm:p-6 lg:p-8';
@@ -22,6 +23,13 @@ const LISTING_TYPES = [
   ['product', 'Product'],
   ['service', 'Service'],
   ['course', 'Course'],
+];
+const LISTING_SECTIONS = [
+  ['listing-basics-heading', 'Basics'],
+  ['listing-photos-heading', 'Photos'],
+  ['listing-price-heading', 'Price and delivery'],
+  ['listing-payment', 'Payment options'],
+  ['listing-preview-heading', 'Live preview'],
 ];
 
 function RequiredMark() {
@@ -54,12 +62,12 @@ export function TypeSwitch({ value, onChange }) {
 export function PhotoUploader({ photos, onAdd, onRemove, onRetry, onBlurField, type }) {
   const inputId = 'listing-photos';
   return (
-    <section className={CARD_CLASS} aria-labelledby="listing-photos-heading">
-      <h2 id="listing-photos-heading" className="font-display text-xl lg:text-2xl">
+    <section className={`${CARD_CLASS} listing-photos-card`} aria-labelledby="listing-photos-heading">
+      <h2 id="listing-photos-heading" className="scroll-mt-24 font-display text-xl lg:text-2xl">
         2. Photos{['product', 'course'].includes(type) && <RequiredMark />}
       </h2>
       <p className="mt-1 text-sm text-ink/60">Add up to five clear images. Each image must be 5 MB or smaller.</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="listing-photos-grid mt-4">
         {photos.map((photo, index) => (
           <div key={photo.id} className="relative min-w-0">
             <div className="aspect-square overflow-hidden rounded-xl border border-line bg-paper-2">
@@ -104,7 +112,7 @@ export function PhotoUploader({ photos, onAdd, onRemove, onRetry, onBlurField, t
 function TypeFields({ form, onChange, errors, fulfilmentDefault, onFulfilmentChange, onBlurField }) {
   if (form.type === 'product') {
     return (
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="listing-type-fields mt-4 grid gap-4">
         <label className="block text-sm font-medium">Condition
           <select value={form.condition} onChange={(event) => onChange('condition', event.target.value)} className={FIELD_CLASS}>
             <option value="new">New</option><option value="used">Used</option>
@@ -127,7 +135,7 @@ function TypeFields({ form, onChange, errors, fulfilmentDefault, onFulfilmentCha
             </button>
           </span>
         </label>
-        <label className="block text-sm font-medium sm:col-span-2">Quantity<RequiredMark />
+        <label className="listing-quantity-field block text-sm font-medium">Quantity<RequiredMark />
           <input required type="number" min="1" step="1" inputMode="numeric" value={form.quantity} onBlur={() => onBlurField('quantity')} onChange={(event) => onChange('quantity', event.target.value.replace(/\D/g, ''))} className={FIELD_CLASS} aria-invalid={Boolean(errors.quantity)} />
           {errors.quantity && <span className="mt-1 block text-sm text-dispute">{errors.quantity}</span>}
         </label>
@@ -143,7 +151,7 @@ function TypeFields({ form, onChange, errors, fulfilmentDefault, onFulfilmentCha
     );
   }
   return (
-    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+    <div className="listing-type-fields mt-4 grid gap-4">
       <label className="block text-sm font-medium">Format
         <select value={form.format} onChange={(event) => onChange('format', event.target.value)} className={FIELD_CLASS}>
           <option value="self-paced-videos">Self-paced videos</option><option value="live-cohort">Live cohort</option><option value="pdf-ebook">PDF or ebook</option>
@@ -154,7 +162,7 @@ function TypeFields({ form, onChange, errors, fulfilmentDefault, onFulfilmentCha
           <option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option>
         </select>
       </label>
-      <label className="block text-sm font-medium sm:col-span-2">Duration or lessons<RequiredMark />
+      <label className="listing-quantity-field block text-sm font-medium">Duration or lessons<RequiredMark />
         <input required value={form.duration} onBlur={() => onBlurField('duration')} onChange={(event) => onChange('duration', event.target.value)} maxLength={120} placeholder="e.g. 8 lessons or 4 weeks" className={FIELD_CLASS} aria-invalid={Boolean(errors.duration)} />
         {errors.duration && <span className="mt-1 block text-sm text-dispute">{errors.duration}</span>}
       </label>
@@ -164,10 +172,12 @@ function TypeFields({ form, onChange, errors, fulfilmentDefault, onFulfilmentCha
 
 export function ListingForm({ form, onChange, errors, onBlurField }) {
   return (
-    <section className={CARD_CLASS} aria-labelledby="listing-basics-heading">
-      <h2 id="listing-basics-heading" className="font-display text-xl lg:text-2xl">1. Basics</h2>
-      <div className="mt-5 space-y-5">
-        <TypeSwitch value={form.type} onChange={(value) => onChange('type', value)} />
+    <section className={`${CARD_CLASS} listing-basics-card`} aria-labelledby="listing-basics-heading">
+      <h2 id="listing-basics-heading" className="scroll-mt-24 font-display text-xl lg:text-2xl">1. Basics</h2>
+      <div className="listing-basics-fields mt-5">
+        <div className="listing-basics-type">
+          <TypeSwitch value={form.type} onChange={(value) => onChange('type', value)} />
+        </div>
         <label className="block text-sm font-medium">Title<RequiredMark />
           <input required value={form.title} maxLength={80} onBlur={() => onBlurField('title')} onChange={(event) => onChange('title', event.target.value)} placeholder="What are you selling?" className={FIELD_CLASS} aria-invalid={Boolean(errors.title)} aria-describedby={errors.title ? 'title-count title-error' : 'title-count'} />
           <span id="title-count" className="mt-1 block text-right text-xs text-ink/50">{form.title.length}/80</span>
@@ -180,7 +190,7 @@ export function ListingForm({ form, onChange, errors, onBlurField }) {
           </select>
           {errors.category && <span className="mt-1 block text-sm text-dispute">{errors.category}</span>}
         </label>
-        <label className="block text-sm font-medium">Description
+        <label className="listing-basics-description block text-sm font-medium">Description
           <textarea rows="5" maxLength={1000} value={form.description} onBlur={() => onBlurField('description')} onChange={(event) => onChange('description', event.target.value)} placeholder="Tell buyers what makes this a great choice." className={`${FIELD_CLASS} min-h-32 resize-y`} aria-describedby="description-count" aria-invalid={Boolean(errors.description)} />
           <span id="description-count" className="mt-1 block text-right text-xs text-ink/50">{form.description.length}/1000</span>
           {errors.description && <span className="mt-1 block text-sm text-dispute">{errors.description}</span>}
@@ -192,8 +202,8 @@ export function ListingForm({ form, onChange, errors, onBlurField }) {
 
 export function PriceDeliveryCard({ form, onChange, errors, fulfilmentDefault, onFulfilmentChange, onBlurField }) {
   return (
-    <section className={CARD_CLASS} aria-labelledby="listing-price-heading">
-      <h2 id="listing-price-heading" className="font-display text-xl lg:text-2xl">3. Price and delivery</h2>
+    <section className={`${CARD_CLASS} listing-price-card`} aria-labelledby="listing-price-heading">
+      <h2 id="listing-price-heading" className="scroll-mt-24 font-display text-xl lg:text-2xl">3. Price and delivery</h2>
       <label className="mt-4 block text-sm font-medium">Price in Naira<RequiredMark />
         <div className="mt-1 flex min-h-11 overflow-hidden rounded-xl border border-line bg-input focus-within:outline focus-within:outline-2 focus-within:outline-focus">
           <span aria-hidden="true" className="flex items-center border-r border-line px-3 text-ink/60">₦</span>
@@ -235,8 +245,8 @@ export function ListingPreview({ form, photos }) {
       ? `Delivered in ${form.deliveryTime || '…'}`
       : `${{ 'self-paced-videos': 'Self-paced videos', 'live-cohort': 'Live cohort', 'pdf-ebook': 'PDF or ebook' }[form.format]} · ${form.level} · ${form.duration || 'Duration not set'}`;
   return (
-    <aside className="min-w-0 min-[860px]:sticky min-[860px]:top-6 min-[860px]:self-start">
-      <h2 className="mb-3 font-display text-xl">Live preview</h2>
+    <section className="listing-preview min-w-0" aria-labelledby="listing-preview-heading">
+      <h2 id="listing-preview-heading" className="mb-3 scroll-mt-24 font-display text-xl">Live preview</h2>
       <article className="overflow-hidden rounded-2xl border border-line bg-paper shadow-card">
         <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-paper-2">
           {cover ? <img src={cover.previewUrl} alt={form.title ? `${form.title} cover` : 'Listing cover preview'} className="h-full w-full object-cover" /> : <span aria-hidden="true" className="font-display text-6xl text-ink/25">{form.title.trim().charAt(0).toUpperCase() || '?'}</span>}
@@ -252,7 +262,26 @@ export function ListingPreview({ form, photos }) {
         </div>
       </article>
       <StrengthMeter form={form} photos={photos} />
-    </aside>
+    </section>
+  );
+}
+
+function ListingSectionNav({ activeSection, onSelect }) {
+  return (
+    <nav aria-label="Listing sections" className="listing-section-nav">
+      {LISTING_SECTIONS.map(([id, label], index) => (
+        <button
+          key={id}
+          type="button"
+          aria-current={activeSection === index ? 'step' : undefined}
+          onClick={() => onSelect(id, index)}
+          className={`flex min-h-11 min-w-0 items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus sm:px-3 sm:text-sm ${activeSection === index ? 'border-accent/40 bg-accent/10 text-ink' : 'border-transparent text-ink/60 hover:bg-paper-2'}`}
+        >
+          <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs ${activeSection === index ? 'border-accent text-accent' : 'border-line-strong'}`}>{index + 1}</span>
+          <span className="min-w-0">{label}</span>
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -280,6 +309,18 @@ export function PublishSuccess({ published, onCopy, copied, onAnother }) {
   );
 }
 
+function serviceDraftFromListing(form, photos) {
+  return {
+    title: form.title,
+    summary: form.description.slice(0, 240),
+    description: form.description,
+    category: form.category,
+    images: photos.filter((photo) => photo.url).map((photo) => photo.url),
+    basePrice: Number(form.price) || undefined,
+    estimatedTime: form.deliveryTime || undefined,
+  };
+}
+
 export function ListProductPage({ embedded = false }) {
   usePageTitle('List a product');
   const navigate = useNavigate();
@@ -291,6 +332,7 @@ export function ListProductPage({ embedded = false }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [touched, setTouched] = useState({});
+  const [activeSection, setActiveSection] = useState(0);
   const effectiveForm = {
     ...draft.form,
     paymentOptions: resolveListingPaymentOptions(draft.form, preferences),
@@ -302,6 +344,14 @@ export function ListProductPage({ embedded = false }) {
   const publishDisabled = Object.keys(errors).length > 0 || photoError || create.publishing || draft.loading || preferencesState.loading || Boolean(preferencesState.error);
   const photos = draft.photos;
   const PageContainer = embedded ? 'div' : 'main';
+
+  useEffect(() => {
+    if (draft.loading || draft.form.type !== 'service') return;
+    navigate('/marketplace/new/service', {
+      replace: true,
+      state: { serviceDraft: serviceDraftFromListing(draft.form, photos) },
+    });
+  }, [draft.loading, draft.form, navigate, photos]);
 
   async function publish() {
     const success = await create.publish({ ...effectiveForm, images: photos.filter((photo) => photo.url).map((photo) => photo.url) });
@@ -340,6 +390,11 @@ export function ListProductPage({ embedded = false }) {
     setTouched((current) => ({ ...current, [field]: true }));
   }
 
+  function selectSection(id, index) {
+    setActiveSection(index);
+    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  }
+
   function markCurrentTabTouched() {
     const fields = ['title', 'category', 'price'];
     if (draft.form.type === 'product') fields.push('quantity', 'photos');
@@ -369,7 +424,7 @@ export function ListProductPage({ embedded = false }) {
   }
 
   return (
-    <PageContainer className="mx-auto max-w-7xl pb-24">
+    <PageContainer className="listing-page-container mx-auto max-w-7xl pb-24">
       <header className="mb-8 border-b border-line pb-6">
         <p className="text-xs font-medium uppercase tracking-wider text-ink/50">Marketplace</p>
         <h1 className="mt-2 font-display text-3xl lg:text-4xl">List a product</h1>
@@ -386,37 +441,50 @@ export function ListProductPage({ embedded = false }) {
       {preferencesState.error && <p role="alert" className="mb-4 rounded-xl border border-dispute/30 bg-dispute-soft p-3 text-sm text-dispute">Transaction preferences could not be loaded. Reload this page before publishing so the account defaults are applied correctly. {preferencesState.error}</p>}
       {create.error && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dispute/30 bg-dispute-soft p-3 text-sm text-dispute"><p role="alert">{create.error}</p><button type="button" onClick={publish} className="min-h-11 rounded-lg border border-dispute/40 px-3 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Retry publish</button></div>}
 
-      <div className="grid items-start gap-6 lg:gap-8 min-[860px]:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
-        <div className="space-y-5 lg:space-y-6">
-          <ListingForm
-            form={draft.form}
-            onChange={(field, value) => {
-              if (field === 'type' && value !== draft.form.type) markCurrentTabTouched();
-              draft.updateField(field, value);
-            }}
-            errors={visibleErrors}
-            onBlurField={markTouched}
-          />
-          <PhotoUploader photos={photos} onAdd={draft.addPhotos} onRemove={draft.removePhoto} onRetry={draft.retryPhoto} onBlurField={markTouched} type={draft.form.type} />
-          <PriceDeliveryCard
-            form={effectiveForm}
-            onChange={draft.updateField}
-            errors={visibleErrors}
-            onBlurField={markTouched}
-            fulfilmentDefault={preferences.fulfilmentDefault}
-            onFulfilmentChange={updateFulfilment}
-          />
-          <PaymentOptionsCard
-            paymentDefault={preferences.paymentDefault}
-            paymentOptions={effectiveForm.paymentOptions}
-            overridesDefault={Boolean(draft.form.overridesDefault)}
-            onChange={({ overridesDefault, paymentOptions }) => {
-              draft.updateField('overridesDefault', overridesDefault);
-              draft.updateField('paymentOptions', paymentOptions);
-            }}
-          />
+      <div className="listing-page-layout">
+        <ListingSectionNav activeSection={activeSection} onSelect={selectSection} />
+        <div className="listing-form-column">
+          <div className="listing-form-sections">
+            <div className="listing-form-basics">
+              <ListingForm
+                form={draft.form}
+                onChange={(field, value) => {
+                  if (field === 'type' && value === 'service') {
+                    navigate('/marketplace/new/service', {
+                      state: { serviceDraft: serviceDraftFromListing(draft.form, photos) },
+                    });
+                    return;
+                  }
+                  if (field === 'type' && value !== draft.form.type) markCurrentTabTouched();
+                  draft.updateField(field, value);
+                }}
+                errors={visibleErrors}
+                onBlurField={markTouched}
+              />
+            </div>
+            <PhotoUploader photos={photos} onAdd={draft.addPhotos} onRemove={draft.removePhoto} onRetry={draft.retryPhoto} onBlurField={markTouched} type={draft.form.type} />
+            <PriceDeliveryCard
+              form={effectiveForm}
+              onChange={draft.updateField}
+              errors={visibleErrors}
+              onBlurField={markTouched}
+              fulfilmentDefault={preferences.fulfilmentDefault}
+              onFulfilmentChange={updateFulfilment}
+            />
+            <div className="listing-form-payment scroll-mt-24" id="listing-payment">
+              <PaymentOptionsCard
+                paymentDefault={preferences.paymentDefault}
+                paymentOptions={effectiveForm.paymentOptions}
+                overridesDefault={Boolean(draft.form.overridesDefault)}
+                onChange={({ overridesDefault, paymentOptions }) => {
+                  draft.updateField('overridesDefault', overridesDefault);
+                  draft.updateField('paymentOptions', paymentOptions);
+                }}
+              />
+            </div>
+          </div>
+          <ListingPreview form={effectiveForm} photos={photos} />
         </div>
-        <ListingPreview form={effectiveForm} photos={photos} />
       </div>
 
       {visibleErrors.photos && <p className="mt-3 text-sm text-dispute" aria-live="polite">{visibleErrors.photos}</p>}

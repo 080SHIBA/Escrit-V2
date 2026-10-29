@@ -16,6 +16,28 @@ export default function ListingCard({
   const typeName = listing.type === 'product' ? 'Product' : listing.type === 'service' ? 'Service' : 'Course';
   const cardAction = getMarketplaceCardAction(listing);
   const detailPath = `/listing/${encodeURIComponent(listing.id)}`;
+  const serviceModelName = {
+    appointment: 'Appointment',
+    fixed_scope: 'Fixed scope',
+    custom_quote: 'Custom quote',
+  }[listing.serviceModel] || 'Service';
+  const listedLocations = [...new Set((listing.deliveryMethods || []).map((method) => ({
+    online: 'Remote',
+    remote_deliverable: 'Remote',
+    provider_location: 'At provider location',
+    buyer_location: 'At buyer location',
+  })[method]).filter(Boolean))];
+  const serviceLocations = listedLocations.length ? listedLocations : [{
+    remote: 'Remote',
+    'in-person': 'In person',
+    hybrid: 'Remote / in person',
+  }[listing.deliveryMode]].filter(Boolean);
+  const serviceTiming = listing.serviceModel === 'appointment'
+    ? listing.durationMinutes ? `${listing.durationMinutes} min` : ''
+    : listing.estimatedTime || listing.deliveryTime || '';
+  const verificationLabel = listing.sellerVerified
+    ? 'Verified'
+    : listing.sellerVerificationStatus === 'pending' ? 'Verification pending' : 'Not verified';
 
   return (
     <article
@@ -60,10 +82,19 @@ export default function ListingCard({
               <BadgeCheck size={14} aria-hidden="true" /> <span>Verified</span>
             </span>
           )}
+          {listing.type === 'service' && !listing.sellerVerified && <span className="shrink-0 text-ink/50">{verificationLabel}</span>}
         </div>
+        {listing.type === 'service' && (
+          <div className="space-y-1 text-xs text-ink/55">
+            <p>{serviceModelName}{serviceLocations.length ? ` · ${serviceLocations.join(' / ')}` : ''}</p>
+            {serviceTiming && <p>{serviceTiming}</p>}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
           <p className="truncate text-base font-semibold">
-            {cardAction === 'request-quote' ? 'Get a quote' : `₦${Number(listing.price).toLocaleString('en-NG')}`}
+            {cardAction === 'request-quote'
+              ? Number(listing.startingPrice) > 0 ? `From ₦${Number(listing.startingPrice).toLocaleString('en-NG')}` : 'Get a quote'
+              : `₦${Number(listing.price).toLocaleString('en-NG')}`}
           </p>
           {cardAction === 'cart' ? (
             <button

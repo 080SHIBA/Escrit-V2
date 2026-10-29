@@ -8,7 +8,7 @@ const HTTPS_URL = /^https:\/\/\S+\.\S+$/i;
 // Photo input for a payment link. Sellers either upload from their
 // device (stored on Cloudinary) or paste an image link. `value` is the
 // final HTTPS URL, or an empty string.
-export default function PhotoField({ value, onChange, mediaType = 'image' }) {
+export default function PhotoField({ value, onChange, mediaType = 'image', required = false }) {
   const fileInput = useRef(null);
   const [progress, setProgress] = useState(null); // null when idle, else 0-100
   const [uploadError, setUploadError] = useState(null);
@@ -84,7 +84,7 @@ export default function PhotoField({ value, onChange, mediaType = 'image' }) {
   return (
     <div onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop}>
       <span className="text-sm text-ink/70">
-        {isVideo ? 'Lesson video' : 'Photo'} <span className="text-ink/40">(optional)</span>
+        {isVideo ? 'Lesson video' : 'Photo'} <span className="text-ink/40">({required ? 'required' : 'optional'})</span>
       </span>
 
       <input ref={fileInput} type="file" accept={isVideo ? 'video/mp4,video/webm,video/quicktime' : 'image/*'} hidden onChange={onFileChosen} />

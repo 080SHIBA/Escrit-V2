@@ -84,6 +84,31 @@ async function request(path, { method = 'GET', body, auth = false, signal } = {}
   return data;
 }
 
+async function uploadServiceDeliveryRequest(orderId, file, retry = false) {
+  const form = new FormData();
+  form.append('file', file);
+  const headers = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(apiUrl(`/api/services/orders/${encodeURIComponent(orderId)}/delivery-files`), {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: form,
+  });
+  if (response.status === 401 && !retry) {
+    try {
+      await refreshAccessToken();
+      return uploadServiceDeliveryRequest(orderId, file, true);
+    } catch {
+      accessToken = null;
+      throw new Error('Your session expired. Please log in again.');
+    }
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'The delivery file could not be uploaded.');
+  return data;
+}
+
 function notifyCartChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('escrit:cart-updated'));
 }
@@ -280,13 +305,13 @@ export const api = {
   },
   getMarketplaceSaved: () => marketplaceMocksEnabled
     ? marketplaceMockHandlers.getSaved()
-    : request('/saved', { auth: true }),
+    : request('/marketplace/me/favorites', { auth: true }),
   saveListing: (type, id) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.saveListing(type, id)
-    : request(`/saved/${encodeURIComponent(id)}`, { method: 'POST', body: { type }, auth: true }),
+    : request('/marketplace/me/favorites', { method: 'POST', body: { listingType: type, listingId: id }, auth: true }),
   removeSavedListing: (type, id) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.unsaveListing(type, id)
-    : request(`/saved/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
+    : request(`/marketplace/me/favorites/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
   getMarketplace: (type = 'product') => request(`/marketplace/${type}`),
   getCategories: (type) => request(`/marketplace/categories/${type}`),
   getMarketplaceOverview: () => request('/marketplace/overview'),
@@ -309,7 +334,17 @@ export const api = {
     : request(`/services/orders/${encodeURIComponent(id)}/messages`, { method: 'POST', body: { message }, auth: true }),
   updateServiceOrder: (id, action, payload = {}) => serviceOrderMocksEnabled
     ? serviceOrderMockHandlers.update(id, action, payload)
-    : request(`/services/orders/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: payload, auth: true }),
+    : request(`/services/orders/${encodeURIComponent(id)}/${action}`, {
+      method: 'POST',
+      body: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'actorRole')),
+      auth: true,
+    }),
+  uploadServiceDeliveryFile: (id, file, role = 'seller') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.uploadDeliveryFile(id, file, role)
+    : uploadServiceDeliveryRequest(id, file),
+  getServiceDeliveryFile: (id, assetId, role = 'buyer') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.getDeliveryFile(id, assetId, role)
+    : request(`/services/orders/${encodeURIComponent(id)}/deliverables/${encodeURIComponent(assetId)}`, { auth: true }),
   getListingReviews: (type, id) => request(`/marketplace/${type}/${id}/reviews`),
   getReviewEligibility: (type, id, sellerId) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.getReviewEligibility(type, id, sellerId)
@@ -317,31 +352,53 @@ export const api = {
   createListingReview: (type, id, payload, sellerId) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.createReview(type, id, sellerId, payload)
     : request(`/marketplace/${type}/${id}/reviews`, { method: 'POST', body: payload, auth: true }),
-  listServiceOffers: () => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.listOffers()
-    : request('/service-offers', { auth: true }),
+  listServiceOffers: (role = 'all') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.listOffers({ role })
+    : request(`/conversations?role=${encodeURIComponent(role)}`, { auth: true }),
   createServiceOffer: (payload) => serviceOrderMocksEnabled
     ? serviceOrderMockHandlers.createOffer(payload)
     : request('/service-offers', { method: 'POST', body: payload, auth: true }),
-  getOfferMessages: (id) => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.getOfferMessages(id)
-    : request(`/service-offers/${id}/messages`, { auth: true }),
-  sendOfferMessage: (id, body) => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.sendOfferMessage(id, body)
-    : request(`/service-offers/${id}/messages`, { method: 'POST', body: { body }, auth: true }),
+  openServiceConversation: (payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.openConversation(payload)
+    : request('/conversations', { method: 'POST', body: payload, auth: true }),
+  getOfferMessages: (id, before = '') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.getOfferMessages(id, before)
+    : request(`/conversations/${encodeURIComponent(id)}/messages?limit=30${before ? `&before=${encodeURIComponent(before)}` : ''}`, { auth: true }),
+  sendOfferMessage: (id, body, clientMessageId, role = 'buyer') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.sendOfferMessage(id, body, clientMessageId, role)
+    : request(`/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', body: { body, clientMessageId }, auth: true }),
   getNotifications: () => request('/notifications', { auth: true }),
   getNotificationPreferences: () => request('/notifications/preferences', { auth: true }),
   updateNotificationPreferences: (preferences) => request('/notifications/preferences', { method: 'PATCH', body: preferences, auth: true }),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', auth: true }),
-  counterServiceOffer: (id, payload) => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.counterOffer(id, payload)
-    : request(`/service-offers/${id}/counter`, { method: 'POST', body: payload, auth: true }),
-  acceptServiceOffer: (id) => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.acceptOffer(id)
-    : request(`/service-offers/${id}/accept`, { method: 'POST', body: {}, auth: true }),
-  rejectServiceOffer: (id) => serviceOrderMocksEnabled
-    ? serviceOrderMockHandlers.rejectOffer(id)
-    : request(`/service-offers/${id}/reject`, { method: 'POST', body: {}, auth: true }),
+  counterServiceOffer: (id, payload, role = 'buyer') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.counterOffer(id, { ...payload, actorRole: role })
+    : request(`/offers/${encodeURIComponent(id)}/counter`, { method: 'POST', body: payload, auth: true }),
+  sendServiceQuote: (id, payload, role = 'seller') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.sendQuote(id, { ...payload, actorRole: role })
+    : request(`/offers/${encodeURIComponent(id)}/quote`, { method: 'POST', body: payload, auth: true }),
+  requestServiceQuoteChanges: (id, note) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.requestQuoteChanges(id, note)
+    : request(`/service-offers/${id}/request-changes`, { method: 'POST', body: { note }, auth: true }),
+  acceptServiceOffer: (id, payload = {}, role = 'buyer') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.acceptOffer(id, { termsAccepted: true, ...payload, actorRole: role })
+    : request(`/offers/${encodeURIComponent(id)}/accept`, { method: 'POST', body: { termsAccepted: true, ...payload }, auth: true }),
+  rejectServiceOffer: (id, role = 'buyer') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.rejectOffer(id, role)
+    : request(`/offers/${encodeURIComponent(id)}/decline`, { method: 'POST', body: {}, auth: true }),
+  setServicePaymentOption: (id, payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.setPaymentOption(id, payload)
+    : request(`/offers/${encodeURIComponent(id)}/payment-option`, {
+      method: 'POST',
+      body: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'actorRole')),
+      auth: true,
+    }),
+  reportServiceConversation: (id, reason) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.reportConversation(id, { reason })
+    : request(`/conversations/${encodeURIComponent(id)}/report`, { method: 'POST', body: { reason }, auth: true }),
+  confirmMockServicePayment: (id, result = 'success') => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.confirmMockPayment(id, result)
+    : Promise.reject(new Error('Mock payment confirmation is available only in local mock mode.')),
   listProductOffers: () => request('/product-offers', { auth: true }),
   createProductOffer: (payload) => request('/product-offers', { method: 'POST', body: payload, auth: true }),
   respondProductOffer: (id, decision) => request(`/product-offers/${id}/respond`, { method: 'POST', body: { decision }, auth: true }),
@@ -387,7 +444,15 @@ export const api = {
   getPlatformCredits: () => request('/marketplace/me/credits', { auth: true }),
   spendPlatformCredits: (payload) => request('/marketplace/me/credits/spend', { method: 'POST', body: payload, auth: true }),
   getMyListings: () => listingMocksEnabled ? listingMockHandlers.getMyListings() : request('/marketplace/me/listings', { auth: true }),
-  setMyListingActive: (type, id, active) => request(`/marketplace/me/listings/${type}/${id}`, { method: 'PATCH', body: { active }, auth: true }),
+  setMyListingActive: (type, id, active) => listingMocksEnabled
+    ? listingMockHandlers.setActive(type, id, active)
+    : request(`/marketplace/me/listings/${type}/${id}`, { method: 'PATCH', body: { active }, auth: true }),
+  archiveMyServiceListing: (id, archived = true) => listingMocksEnabled
+    ? listingMockHandlers.archiveService(id, archived)
+    : request(`/marketplace/me/listings/service/${id}`, { method: 'PATCH', body: { archived }, auth: true }),
+  updateMyServiceListing: (id, serviceData) => listingMocksEnabled
+    ? listingMockHandlers.updateService(id, serviceData)
+    : request(`/marketplace/me/listings/service/${id}`, { method: 'PATCH', body: { serviceData }, auth: true }),
   addCartItem: async (listingType, listingId, options = {}) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.addCartItem({ type: listingType, listingId, ...options })

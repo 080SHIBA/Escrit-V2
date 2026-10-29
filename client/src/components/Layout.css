@@ -1,0 +1,5 @@
+@media (min-width: 1024px) {
+  .app-shell > main.seller-nav-offset {
+    width: calc(100% - 16rem);
+  }
+}

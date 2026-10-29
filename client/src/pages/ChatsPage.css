@@ -1,0 +1,23 @@
+.chats-page {
+  container-name: chats;
+  container-type: inline-size;
+}
+
+.chat-workspace {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container chats (min-width: 1000px) {
+  .chat-workspace {
+    height: calc(100dvh - 14rem);
+    min-height: 40rem;
+    grid-template-columns: 300px minmax(0, 1fr) 290px;
+  }
+
+  .chat-workspace > .chat-workspace__list,
+  .chat-workspace > .chat-workspace__thread,
+  .chat-workspace > .chat-workspace__details {
+    display: flex;
+  }
+}

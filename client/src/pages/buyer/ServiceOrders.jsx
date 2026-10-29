@@ -19,7 +19,7 @@ const statusLabel = {
   cancelled: 'Cancelled',
 };
 
-export default function ServiceOrders() {
+export default function ServiceOrders({ role = 'sell', embedded = false, showEmpty = true }) {
   const { seller } = useAuthContext();
   const myId = String(seller?._id || seller?.id || seller?.sellerId || '');
   const [orders, setOrders] = useState([]);
@@ -31,7 +31,7 @@ export default function ServiceOrders() {
   const [messageDrafts, setMessageDrafts] = useState({});
   const [rescheduleInputs, setRescheduleInputs] = useState({});
   const [disputeReasons, setDisputeReasons] = useState({});
-  usePageTitle('Service orders');
+  usePageTitle(embedded ? 'My orders' : 'Service orders');
 
   const refresh = useCallback(async () => {
     setError('');
@@ -95,20 +95,31 @@ export default function ServiceOrders() {
     }
   }
 
-  if (loading) return <div className="mx-auto max-w-5xl px-4 py-10" aria-busy="true">Loading service orders…</div>;
+  const visibleOrders = orders.filter((order) => {
+    const buyerId = String(order.buyerId?._id || order.buyerId);
+    const sellerId = String(order.sellerId?._id || order.sellerId);
+    if (serviceOrderMocksEnabled) {
+      return role === 'buy' ? buyerId === 'mock-buyer' : sellerId === 'mock-seller';
+    }
+    return role === 'buy' ? buyerId === myId : sellerId === myId;
+  });
+
+  if (embedded && !loading && !error && visibleOrders.length === 0 && !showEmpty) return null;
+
+  if (loading) return <section className={embedded ? 'mt-6' : 'mx-auto max-w-5xl px-4 py-10'} aria-busy="true">Loading service orders…</section>;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
+    <section className={embedded ? 'mt-6' : 'mx-auto max-w-5xl px-4 py-8 sm:px-6'}>
+      {!embedded && <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
         <div><p className="text-xs font-semibold uppercase tracking-wider text-ink/50">Your work, in one place</p><h1 className="mt-2 font-display text-3xl">Service orders</h1></div>
         <Link to="/marketplace/services" className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Browse services</Link>
-      </header>
+      </header>}
       {error && <p role="alert" className="mt-4 rounded-lg border border-dispute/30 p-3 text-sm text-dispute">{error}</p>}
-      {!orders.length ? <section className="py-14 text-center"><h2 className="font-display text-2xl">No service orders yet</h2><p className="mt-2 text-sm text-ink/60">Appointments, fixed-scope work and accepted quotes will appear here.</p></section> : (
+      {!visibleOrders.length ? !error && showEmpty && <section className="py-10 text-center"><h2 className="font-display text-xl">No service orders yet</h2><p className="mt-2 text-sm text-ink/60">Appointments, fixed-scope work and accepted quotes will appear here.</p></section> : (
         <ul className="mt-5 space-y-4">
-          {orders.map((order) => {
-            const isBuyer = serviceOrderMocksEnabled || String(order.buyerId?._id || order.buyerId) === myId;
-            const isSeller = String(order.sellerId?._id || order.sellerId) === myId;
+          {visibleOrders.map((order) => {
+            const isBuyer = serviceOrderMocksEnabled ? role === 'buy' : String(order.buyerId?._id || order.buyerId) === myId;
+            const isSeller = serviceOrderMocksEnabled ? role === 'sell' : String(order.sellerId?._id || order.sellerId) === myId;
             const disputed = order.status === 'disputed' || order.transactionId?.status === 'DISPUTED';
             const service = order.serviceId || {};
             return <li key={order._id} className="rounded-xl border border-line bg-paper p-4 sm:p-6">
@@ -187,6 +198,6 @@ export default function ServiceOrders() {
           })}
         </ul>
       )}
-    </main>
+    </section>
   );
 }

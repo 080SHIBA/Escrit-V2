@@ -16,6 +16,14 @@ export const ORDER_FILTERS = Object.freeze([
 
 import { DEFAULT_RELEASE_WINDOW_HOURS, normalizeReleaseWindowHours } from './releaseConditions.js';
 
+const ORDER_LISTING_TYPES = new Set(['product', 'service', 'course']);
+
+export function orderListingType(order) {
+  if (ORDER_LISTING_TYPES.has(order?.listingType)) return order.listingType;
+  if (ORDER_LISTING_TYPES.has(order?.fulfillmentType)) return order.fulfillmentType;
+  return 'product';
+}
+
 export const DELIVERY_RELEASE_MS = DEFAULT_RELEASE_WINDOW_HOURS * 60 * 60 * 1000;
 
 export function deliveryReleaseTime(deliveredAt, releaseWindowHours = DEFAULT_RELEASE_WINDOW_HOURS) {

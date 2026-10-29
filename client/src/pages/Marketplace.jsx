@@ -32,6 +32,10 @@ export default function Marketplace() {
   const [maxPrice, setMaxPrice] = useState('');
   const [minRating, setMinRating] = useState('0');
   const [negotiableOnly, setNegotiableOnly] = useState(false);
+  const [serviceModelFilter, setServiceModelFilter] = useState('all');
+  const [serviceDeliveryFilter, setServiceDeliveryFilter] = useState('all');
+  const [appointmentScheduleFilter, setAppointmentScheduleFilter] = useState(false);
+  const [verifiedProvidersOnly, setVerifiedProvidersOnly] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(24);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -77,7 +81,7 @@ export default function Marketplace() {
 
   useEffect(() => {
     setDisplayLimit(24);
-  }, [type, query, category, sort, minPrice, maxPrice, minRating, negotiableOnly]);
+  }, [type, query, category, sort, minPrice, maxPrice, minRating, negotiableOnly, serviceModelFilter, serviceDeliveryFilter, appointmentScheduleFilter, verifiedProvidersOnly]);
 
   function requireBuyerAccount() {
     if (authStatus === 'authed') return true;
@@ -134,13 +138,24 @@ export default function Marketplace() {
     const normalizedQuery = query.trim().toLowerCase();
     return items
       .filter((item) => category === 'all' || item.category === category)
-      .filter((item) => !normalizedQuery || `${item.title} ${item.description} ${item.category} ${item.seller?.businessName}`.toLowerCase().includes(normalizedQuery))
+      .filter((item) => !normalizedQuery || `${item.title} ${item.description} ${item.category} ${item.subcategory || ''} ${item.serviceModel || ''} ${item.seller?.businessName}`.toLowerCase().includes(normalizedQuery))
       .filter((item) => {
-        const priceKobo = item.buyerPriceKobo ?? Number(type === 'service' ? item.basePrice : item.price || 0) * 100;
+        const servicePrice = item.startingPrice || item.basePrice || 0;
+        const priceKobo = Number(type === 'service' ? servicePrice : item.price || 0) * 100;
         return (!minPrice || priceKobo >= Number(minPrice) * 100) && (!maxPrice || priceKobo <= Number(maxPrice) * 100);
       })
       .filter((item) => Number(item.averageRating || 0) >= Number(minRating))
       .filter((item) => !negotiableOnly || Boolean(item.negotiable))
+      .filter((item) => type !== 'service' || serviceModelFilter === 'all' || (item.serviceModel || 'appointment') === serviceModelFilter)
+      .filter((item) => type !== 'service' || serviceDeliveryFilter === 'all' || (
+        serviceDeliveryFilter === 'remote' ? item.deliveryMode === 'remote'
+          : serviceDeliveryFilter === 'in-person' ? ['in-person', 'hybrid'].includes(item.deliveryMode)
+            : (item.deliveryMethods || []).includes('buyer_location')
+      ))
+      .filter((item) => type !== 'service' || !appointmentScheduleFilter || (
+        (item.serviceModel || 'appointment') === 'appointment' && (item.availability || []).length > 0
+      ))
+      .filter((item) => type !== 'service' || !verifiedProvidersOnly || Boolean(item.sellerVerified || item.seller?.isVerified))
       .sort((left, right) => {
         if (sort === 'newest') {
           const now = Date.now();
@@ -149,14 +164,14 @@ export default function Marketplace() {
           if (Boolean(left.isFeatured) !== Boolean(right.isFeatured)) return Number(right.isFeatured) - Number(left.isFeatured);
           if (Boolean(leftBoosted) !== Boolean(rightBoosted)) return Number(rightBoosted) - Number(leftBoosted);
         }
-        const leftPrice = left.buyerPriceKobo ?? Number(type === 'service' ? left.basePrice : left.price || 0) * 100;
-        const rightPrice = right.buyerPriceKobo ?? Number(type === 'service' ? right.basePrice : right.price || 0) * 100;
+        const leftPrice = Number(type === 'service' ? left.startingPrice || left.basePrice : left.price || 0) * 100;
+        const rightPrice = Number(type === 'service' ? right.startingPrice || right.basePrice : right.price || 0) * 100;
         if (sort === 'price-low') return leftPrice - rightPrice;
         if (sort === 'price-high') return rightPrice - leftPrice;
         if (sort === 'popular') return Number(right.reviewCount || 0) - Number(left.reviewCount || 0);
         return new Date(right.createdAt) - new Date(left.createdAt);
       });
-  }, [items, query, category, sort, type, minPrice, maxPrice, minRating, negotiableOnly]);
+  }, [items, query, category, sort, type, minPrice, maxPrice, minRating, negotiableOnly, serviceModelFilter, serviceDeliveryFilter, appointmentScheduleFilter, verifiedProvidersOnly]);
 
   const displayedItems = visibleItems.slice(0, displayLimit);
 
@@ -227,6 +242,20 @@ export default function Marketplace() {
         <label className="text-xs text-ink/55">Minimum rating<select value={minRating} onChange={(event) => setMinRating(event.target.value)} className="mt-1 w-full border border-line bg-input px-3 py-2 text-sm"><option value="0">Any rating</option><option value="3">3 stars & up</option><option value="4">4 stars & up</option><option value="4.5">4.5 stars & up</option></select></label>
         {type === 'product' && <label className="flex items-center gap-2 self-end pb-2 text-xs text-ink/65"><input type="checkbox" checked={negotiableOnly} onChange={(event) => setNegotiableOnly(event.target.checked)} />Negotiable</label>}
       </div>
+      {type === 'service' && <div className="mt-3 grid gap-3 rounded-xl border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs text-ink/55">Service model
+          <select value={serviceModelFilter} onChange={(event) => setServiceModelFilter(event.target.value)} className="mt-1 min-h-11 w-full border border-line bg-input px-3 text-sm">
+            <option value="all">All service models</option><option value="appointment">Appointment</option><option value="fixed_scope">Fixed scope</option><option value="custom_quote">Custom quote</option>
+          </select>
+        </label>
+        <label className="text-xs text-ink/55">Location
+          <select value={serviceDeliveryFilter} onChange={(event) => setServiceDeliveryFilter(event.target.value)} className="mt-1 min-h-11 w-full border border-line bg-input px-3 text-sm">
+            <option value="all">Any location</option><option value="remote">Remote</option><option value="in-person">In person</option><option value="buyer-location">At buyer location</option>
+          </select>
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-xs text-ink/65"><input type="checkbox" checked={appointmentScheduleFilter} onChange={(event) => setAppointmentScheduleFilter(event.target.checked)} />Has published appointment hours</label>
+        <label className="flex min-h-11 items-center gap-2 text-xs text-ink/65"><input type="checkbox" checked={verifiedProvidersOnly} onChange={(event) => setVerifiedProvidersOnly(event.target.checked)} />Verified providers only</label>
+      </div>}
 
       <div className="mt-6 flex items-center justify-between text-sm text-ink/60">
         <span>{visibleItems.length === items.length ? summary : `${visibleItems.length} of ${items.length} listings`}</span>
@@ -249,8 +278,24 @@ export default function Marketplace() {
             const image = item.images?.[0] || FALLBACK_IMAGES[type];
             const priceText =
               type === 'service'
-                ? item.basePrice > 0 ? item.buyerPriceKobo == null ? 'Price unavailable' : `From ₦${Number(item.buyerPriceKobo / 100).toLocaleString()}` : 'Get a quote'
+                ? item.serviceModel === 'custom_quote'
+                  ? Number(item.startingPrice || 0) > 0 ? `Starting at ₦${Number(item.startingPrice).toLocaleString()}` : 'Get a quote'
+                  : Number(item.basePrice || 0) > 0 ? `From ₦${Number(item.basePrice).toLocaleString()}` : 'Price unavailable'
                 : item.buyerPriceKobo == null ? 'Price unavailable' : `₦${Number(item.buyerPriceKobo / 100).toLocaleString()}`;
+            const serviceDelivery = item.deliveryMethods?.length
+              ? item.deliveryMethods.map((method) => ({
+                online: 'Online',
+                provider_location: 'Provider location',
+                buyer_location: 'Buyer location',
+                remote_deliverable: 'Remote deliverables',
+              })[method] || method).join(' · ')
+              : item.deliveryMode === 'hybrid' ? 'Remote or in person' : item.deliveryMode === 'in-person' ? 'In person' : 'Remote';
+            const serviceTiming = item.serviceModel === 'appointment'
+              ? item.durationMinutes ? `${item.durationMinutes} min` : 'Appointment'
+              : item.serviceModel === 'fixed_scope' ? item.packages?.length
+                ? `${Math.min(...item.packages.map((entry) => Number(entry.deliveryDays || 7)))} days from`
+                : item.estimatedTime || 'Delivery time shown in package'
+                : 'Timing agreed with provider';
             const isQuickViewOpen = quickViewId === item._id;
 
             return (
@@ -266,8 +311,8 @@ export default function Marketplace() {
                 </div>
                 <div className="space-y-2.5 p-3 sm:p-4">
                   <div className="flex min-h-5 items-center justify-between gap-2 text-[10px] uppercase text-ink/50 sm:text-[11px]">
-                    <span className="truncate">{item.category || 'General'}</span>
-                    <span className="shrink-0 text-seal">{item.seller?.isDemoSeed ? 'Demo' : item.isFeatured ? 'Featured' : item.promotionUntil && new Date(item.promotionUntil) > new Date() ? 'Promoted' : item.negotiable ? 'Negotiable' : ''}</span>
+                    <span className="truncate">{item.category || 'General'}{type === 'service' ? ` · ${{ appointment: 'Appointment', fixed_scope: 'Fixed scope', custom_quote: 'Custom quote' }[item.serviceModel || 'appointment']}` : ''}</span>
+                    <span className="shrink-0 text-seal">{type === 'service' && (item.sellerVerified || item.seller?.isVerified) ? 'Verified provider' : item.seller?.isDemoSeed ? 'Demo' : item.isFeatured ? 'Featured' : item.promotionUntil && new Date(item.promotionUntil) > new Date() ? 'Promoted' : item.negotiable ? 'Negotiable' : ''}</span>
                   </div>
 
                   <div>
@@ -277,8 +322,9 @@ export default function Marketplace() {
 
                   <div className="flex min-h-7 items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold sm:text-base">{priceText}</p>
-                    <span className="shrink-0 text-[10px] text-ink/55 sm:text-xs">{item.averageRating ? `★ ${Number(item.averageRating).toFixed(1)}` : item.isVerified ? 'Verified' : ''}</span>
+                    <span className="shrink-0 text-[10px] text-ink/55 sm:text-xs">{Number(item.averageRating) > 0 ? `★ ${Number(item.averageRating).toFixed(1)}${item.reviewCount ? ` · ${item.reviewCount}` : ''}` : item.reviewCount ? `${item.reviewCount} reviews` : 'No reviews yet'}</span>
                   </div>
+                  {type === 'service' && <p className="text-[10px] text-ink/55">{serviceDelivery} · {serviceTiming}</p>}
                   <p className="text-[10px] font-medium text-ink/55">{item.paymentOptionLabel || 'Payment options vary'}</p>
 
                   {isQuickViewOpen && <p className="line-clamp-3 border-t border-line pt-2 text-xs leading-5 text-ink/65">{item.description || 'No description provided yet.'}</p>}

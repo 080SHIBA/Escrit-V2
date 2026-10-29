@@ -1,7 +1,7 @@
 import { Star } from 'lucide-react';
 import { MARKETPLACE_CATEGORIES } from '../../lib/marketplaceState.js';
 
-export default function FilterChips({ minRating, onRatingChange, category, onCategoryChange }) {
+export default function FilterChips({ minRating, onRatingChange, category, onCategoryChange, categories = MARKETPLACE_CATEGORIES }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Minimum rating">
@@ -17,7 +17,7 @@ export default function FilterChips({ minRating, onRatingChange, category, onCat
         </button>
       </div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Listing category">
-        {['all', ...MARKETPLACE_CATEGORIES].map((name) => (
+        {['all', ...categories].map((name) => (
           <button
             key={name}
             type="button"

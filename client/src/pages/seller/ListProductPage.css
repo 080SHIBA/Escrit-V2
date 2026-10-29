@@ -1,0 +1,134 @@
+.listing-page-container {
+  container-name: listing-page;
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.listing-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.listing-section-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.listing-form-column {
+  min-width: 0;
+  container-name: listing-form;
+  container-type: inline-size;
+}
+
+.listing-form-sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.listing-form-basics,
+.listing-form-payment,
+.listing-preview {
+  min-width: 0;
+}
+
+.listing-basics-card,
+.listing-photos-card,
+.listing-price-card {
+  container-type: inline-size;
+}
+
+.listing-basics-card {
+  container-name: listing-basics;
+}
+
+.listing-photos-card {
+  container-name: listing-photos;
+}
+
+.listing-price-card {
+  container-name: listing-price;
+}
+
+.listing-basics-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.listing-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.listing-type-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container listing-page (min-width: 54rem) {
+  .listing-page-layout {
+    grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .listing-section-nav {
+    position: sticky;
+    top: 6rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+}
+
+@container listing-form (min-width: 48rem) {
+  .listing-form-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+
+  .listing-form-basics,
+  .listing-form-payment {
+    grid-column: 1 / -1;
+  }
+}
+
+@container listing-basics (min-width: 44rem) {
+  .listing-basics-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .listing-basics-type,
+  .listing-basics-description {
+    grid-column: 1 / -1;
+  }
+}
+
+@container listing-photos (min-width: 30rem) {
+  .listing-photos-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container listing-photos (min-width: 48rem) {
+  .listing-photos-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@container listing-price (min-width: 40rem) {
+  .listing-type-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .listing-quantity-field {
+    grid-column: 1 / -1;
+  }
+}

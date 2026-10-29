@@ -6,6 +6,7 @@ import { HandshakeIcon, MyOrdersIcon } from '../../components/icons.jsx';
 import { api } from '../../lib/api.js';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { useOrders, useOrderActions } from '../../lib/useOrders.js';
+import ServiceOrders from './ServiceOrders.jsx';
 import {
   ORDER_FILTERS,
   ORDER_STAGES,
@@ -13,6 +14,7 @@ import {
   deliveryReleaseTime,
   filterOrders,
   orderFilter,
+  orderListingType,
 } from '../../../../shared/orderState.js';
 
 const currency = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
@@ -45,6 +47,32 @@ export function RoleTabs({ role, onChange }) {
           className={`min-h-11 rounded-lg px-5 text-sm font-medium transition-colors motion-reduce:transition-none active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${role === entry ? 'bg-accent text-accent-ink' : 'text-ink/65 hover:text-ink'}`}
         >
           {entry === 'sell' ? 'Selling' : 'Buying'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const ORDER_TYPES = [
+  ['all', 'All'],
+  ['product', 'Products'],
+  ['service', 'Services'],
+  ['course', 'Courses'],
+];
+
+function OrderTypeTabs({ type, onChange }) {
+  return (
+    <div role="tablist" aria-label="Order category" className="mt-4 flex flex-wrap gap-2">
+      {ORDER_TYPES.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={type === value}
+          onClick={() => onChange(value)}
+          className={`min-h-11 rounded-full border px-4 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${type === value ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-paper-2 text-ink/70 hover:border-line-strong hover:text-ink'}`}
+        >
+          {label}
         </button>
       ))}
     </div>
@@ -268,6 +296,8 @@ export function OrdersPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const role = searchParams.get('role') === 'buy' ? 'buy' : 'sell';
+  const requestedType = searchParams.get('type');
+  const type = ORDER_TYPES.some(([value]) => value === requestedType) ? requestedType : 'all';
   const { orders, setOrders, error: loadError, retry } = useOrders(role);
   const { perform } = useOrderActions();
   const [filter, setFilter] = useState('All');
@@ -303,9 +333,16 @@ export function OrdersPage() {
     setExpandedId(null);
     setActionErrors({});
     setDisputeId(null);
-  }, [role]);
+  }, [role, type]);
 
-  const visibleOrders = useMemo(() => orders ? filterOrders(orders, filter) : [], [orders, filter]);
+  const categoryOrders = useMemo(() => {
+    if (!orders) return [];
+    return orders.filter((order) => {
+      return type === 'all' || orderListingType(order) === type;
+    });
+  }, [orders, type]);
+  const visibleOrders = useMemo(() => filterOrders(categoryOrders, filter), [categoryOrders, filter]);
+  const hasServiceOrders = type === 'all' || type === 'service';
 
   async function copyListingLink() {
     if (!shareLinkId) return;
@@ -355,21 +392,25 @@ export function OrdersPage() {
         </h1>
         <p className="mt-2 text-sm text-ink/60">Track every order from payment to payout.</p>
       </header>
-      <div className="mt-5">
-        <RoleTabs role={role} onChange={(next) => navigate(`/account/orders?role=${next}`)} />
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <RoleTabs role={role} onChange={(next) => navigate(`/account/orders?role=${next}&type=${type}`)} />
       </div>
+      <OrderTypeTabs type={type} onChange={(next) => navigate(`/account/orders?role=${role}&type=${next}`)} />
       {loadError ? (
-        <div className="mt-6 rounded-2xl border border-dispute/40 bg-dispute-soft p-5">
-          <p role="alert" className="text-sm text-dispute">{loadError}</p>
-          <button type="button" onClick={retry} className="mt-3 min-h-11 rounded-xl border border-dispute px-4 text-sm font-semibold text-dispute active:bg-dispute-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Retry</button>
-        </div>
+        <>
+          <div className="mt-6 rounded-2xl border border-dispute/40 bg-dispute-soft p-5">
+            <p role="alert" className="text-sm text-dispute">{loadError}</p>
+            <button type="button" onClick={retry} className="mt-3 min-h-11 rounded-xl border border-dispute px-4 text-sm font-semibold text-dispute active:bg-dispute-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Retry</button>
+          </div>
+          {hasServiceOrders && <ServiceOrders role={role} embedded />}
+        </>
       ) : orders === null ? <div className="mt-6"><OrderSkeletons /></div> : (
         <>
-          {orders.length > 0 && <div className="mt-5"><StatusChips orders={orders} filter={filter} onChange={(next) => { setFilter(next); setExpandedId(null); }} /></div>}
-          {orders.length === 0 ? (
+          {categoryOrders.length > 0 && <div className="mt-5"><StatusChips orders={categoryOrders} filter={filter} onChange={(next) => { setFilter(next); setExpandedId(null); }} /></div>}
+          {categoryOrders.length === 0 && !hasServiceOrders ? (
             <div className="mt-8 rounded-2xl border border-line bg-paper-2 px-5 py-12 text-center">
-              <h2 className="font-display text-xl">No orders yet</h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-ink/60">Share a listing to get your first one.</p>
+              <h2 className="font-display text-xl">{type === 'all' ? 'No orders yet' : `No ${type} orders yet`}</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-ink/60">{role === 'sell' ? 'Share a listing to get your first order.' : 'Browse the marketplace to find something you need.'}</p>
               {role === 'sell' && shareLinkId ? (
                 <button type="button" onClick={copyListingLink} className="mt-5 min-h-11 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-ink active:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
                   {listingCopied ? 'Link copied' : 'Copy listing link'}
@@ -381,9 +422,9 @@ export function OrdersPage() {
               )}
               {copyError && <p role="alert" className="mt-3 text-sm text-dispute">{copyError}</p>}
             </div>
-          ) : visibleOrders.length === 0 ? (
+          ) : categoryOrders.length > 0 && visibleOrders.length === 0 ? (
             <p className="mt-8 rounded-2xl border border-line bg-paper-2 p-8 text-center text-sm text-ink/60">No orders here.</p>
-          ) : (
+          ) : visibleOrders.length > 0 ? (
             <ul aria-label={`${role === 'sell' ? 'Selling' : 'Buying'} orders`} className="mt-5 space-y-3">
               {visibleOrders.map((order) => (
                 <li key={order.id}>
@@ -410,7 +451,8 @@ export function OrdersPage() {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
+          {hasServiceOrders && <ServiceOrders role={role} embedded showEmpty={categoryOrders.length === 0} />}
         </>
       )}
       {toast && (

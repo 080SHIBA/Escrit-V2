@@ -37,6 +37,7 @@ import {
   TransactionPreferencesIcon,
   KycPreviewIcon,
 } from './admin/AdminNavIcon.jsx';
+import './Layout.css';
 
 // Icon-over-label item for the signed-in desktop nav. `tourId` lets a
 // walkthrough step point at this item.
@@ -165,7 +166,7 @@ export default function Layout({ children }) {
   }, [refreshCartCount, location.pathname]);
 
   const refreshNotificationCount = useCallback(() => {
-    if (!isAuthed) {
+    if (!isAuthed || (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true')) {
       setNotificationCount(0);
       return;
     }
@@ -175,7 +176,7 @@ export default function Layout({ children }) {
   }, [isAuthed]);
 
   useEffect(() => {
-    if (!isAuthed || isBuyerSide) {
+    if (!isAuthed || isBuyerSide || (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true')) {
       setNotificationCount(0);
       return undefined;
     }
@@ -213,9 +214,8 @@ export default function Layout({ children }) {
       tourId: 'bank-nav',
     },
     { key: 'favorites', to: '/account/favorites', label: 'Saved listings', Icon: HeartIcon, active: location.pathname === '/account/favorites' },
-    { key: 'orders', to: '/account/orders', label: 'My orders', Icon: MyOrdersIcon, active: location.pathname === '/account/orders' },
-    { key: 'service-orders', to: '/account/service-orders', label: 'Service orders', Icon: MyOrdersIcon, active: location.pathname.startsWith('/account/service-orders') },
-    { key: 'offers', to: '/account/offers', label: 'Service offers & chat', Icon: HandshakeIcon, active: location.pathname.startsWith('/account/offers') },
+    { key: 'orders', to: '/account/orders', label: 'My orders', Icon: MyOrdersIcon, active: location.pathname === '/account/orders' || location.pathname.startsWith('/account/service-orders') },
+    { key: 'offers', to: '/account/chats', label: 'Service offers & chat', Icon: HandshakeIcon, active: location.pathname.startsWith('/account/chats') || location.pathname.startsWith('/account/offers') },
     { key: 'notifications', to: '/account/notifications', label: 'Notifications', Icon: Bell, active: location.pathname === '/account/notifications', badge: notificationCount || undefined },
     { key: 'price-offers', to: '/account/price-offers', label: 'Product price offers', Icon: PriceOffersIcon, active: location.pathname === '/account/price-offers' },
     { key: 'credits', to: '/account/credits', label: 'Promotion credits', Icon: PromotionCreditsIcon, active: location.pathname === '/account/credits' },
@@ -519,8 +519,8 @@ export default function Layout({ children }) {
       {/* Keyed by path so each navigation replays the page transition. */}
       <main
         key={location.pathname}
-        className={`relative z-10 flex-1 w-full animate-page-in transition-[margin-left,width] duration-300 ease-in-out ${
-          isAuthed && !isBuyerSide && !isOnboarding && sellerNavOpen ? 'lg:ml-64 lg:w-[calc(100%-16rem)]' : ''
+        className={`relative z-10 flex-1 w-full ${isStorefrontListPage ? 'min-w-0' : ''} animate-page-in transition-[margin-left,width] duration-300 ease-in-out ${
+          isAuthed && !isBuyerSide && !isOnboarding && sellerNavOpen ? 'lg:ml-64 seller-nav-offset' : ''
         } ${
           isAccountAuthPage
             ? 'max-w-none px-0 py-0 mx-0'
@@ -530,7 +530,7 @@ export default function Layout({ children }) {
                 ? 'max-w-7xl px-0 py-8 mx-auto'
                 : isAdminPage
                   ? 'max-w-none px-4 sm:px-6 py-8 mx-auto'
-                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' || location.pathname === '/cart' || isMarketplaceCategoryPage ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : isStorefrontListPage ? 'max-w-2xl min-[860px]:max-w-none' : 'max-w-2xl'}`
+                : `px-4 sm:px-6 py-8 mx-auto ${location.pathname === '/account/list-product' || location.pathname === '/account/chats' || location.pathname === '/settings' || location.pathname === '/account/bank' || location.pathname === '/dashboard/bank' || location.pathname === '/cart' || isMarketplaceCategoryPage ? 'max-w-7xl' : location.pathname === '/marketplace' || location.pathname === '/dashboard' || isAccountPage ? 'max-w-6xl' : isStorefrontListPage ? 'max-w-2xl min-[860px]:max-w-none' : 'max-w-2xl'}`
         } ${isAuthed && !isBuyerSide && !isOnboarding ? 'pb-24 md:pb-8' : ''}`}
       >
         {children}

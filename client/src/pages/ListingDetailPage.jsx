@@ -243,7 +243,7 @@ export default function ListingDetailPage() {
           <DetailsTable listing={listing} />
           <TermsSection listing={listing} />
           <ReviewsSection listing={listing} reviews={reviews} ratingDistribution={ratingDistribution} />
-          <SellerSection listing={listing} sellerListings={sellerListings} />
+          <SellerSection listing={listing} sellerListings={sellerListings} isOwn={isOwn} />
         </div>
         <div className="order-2 min-w-0 min-[860px]:col-start-2 min-[860px]:row-span-2 min-[860px]:row-start-1">
           <BuyBox

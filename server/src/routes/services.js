@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Joi from 'joi';
+import multer from 'multer';
 import mongoose from 'mongoose';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -7,6 +8,7 @@ import { validate } from '../middleware/validate.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { Service } from '../models/Service.js';
 import { ServiceOrder } from '../models/ServiceOrder.js';
+import { ServiceOffer } from '../models/ServiceOffer.js';
 import { ServiceDailyCapacity } from '../models/ServiceDailyCapacity.js';
 import { Link } from '../models/Link.js';
 import { Transaction } from '../models/Transaction.js';
@@ -19,7 +21,14 @@ import { env } from '../config/env.js';
 import { deliveryReleaseTime } from '../../../shared/orderState.js';
 import { completeDirectService, raiseDispute, releaseOnBuyerConfirmation, TX_STATUS } from '../services/escrow.js';
 import { notifyUser } from '../services/notifications.js';
+import { uploadLimiter } from '../middleware/rateLimit.js';
 import {
+  deletePrivateServiceDeliveryFile,
+  privateServiceDeliveryAssetUrl,
+  uploadPrivateServiceDeliveryFile,
+} from '../services/privateServiceDeliveryStorage.js';
+import {
+  allocateSlotReservationLane,
   activeServiceReservationStatuses,
   localDateTimeToUtc,
   overlaps,
@@ -27,6 +36,51 @@ import {
 } from '../services/serviceAvailability.js';
 
 export const servicesRouter = Router();
+
+const MAX_DELIVERY_FILE_BYTES = 10 * 1024 * 1024;
+const allowedDeliveryTypes = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'text/plain',
+  'application/zip',
+]);
+const deliveryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_DELIVERY_FILE_BYTES, files: 1, fields: 0, parts: 1 },
+  fileFilter(_req, file, callback) {
+    const allowed = file.fieldname === 'file' && allowedDeliveryTypes.has(file.mimetype);
+    callback(allowed ? null : new AppError(400, 'Choose a PDF, image, text file or ZIP archive.'), allowed);
+  },
+});
+
+function receiveDeliveryFile(req, res, next) {
+  deliveryUpload.single('file')(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError(413, 'Delivery files must be 10 MB or smaller.'));
+    }
+    if (error instanceof multer.MulterError) return next(new AppError(400, 'Choose one delivery file and try again.'));
+    return next(error);
+  });
+}
+
+function deliveryFileSignatureMatches(file) {
+  const bytes = file.buffer;
+  if (file.mimetype === 'application/pdf') return bytes.subarray(0, 5).toString() === '%PDF-';
+  if (file.mimetype === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.mimetype === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (file.mimetype === 'image/webp') return bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP';
+  if (file.mimetype === 'application/zip') return bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  if (file.mimetype === 'text/plain') return !bytes.includes(0);
+  return false;
+}
+
+function safeDeliveryFileName(name) {
+  const basename = String(name || '').split(/[\\/]/).pop() || '';
+  return basename.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 180) || 'delivery-file';
+}
 
 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const daySchema = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).custom((value, helpers) => {
@@ -48,6 +102,13 @@ export const orderCreateSchema = Joi.object({
   deliveryMethod: Joi.string().valid('online', 'provider_location', 'buyer_location', 'remote_deliverable', '').default(''),
   location: Joi.string().trim().max(500).allow('').default(''),
   details: Joi.string().trim().max(5000).allow('').default(''),
+  buyerResponses: Joi.object().pattern(
+    Joi.string().max(48),
+    Joi.alternatives().try(
+      Joi.string().max(5000),
+      Joi.array().items(Joi.string().max(500)).max(20)
+    )
+  ).max(20).default({}),
   termsAccepted: Joi.boolean().valid(true).required(),
 });
 
@@ -64,15 +125,20 @@ function localDateParts(dateText) {
   return { year, month, day, weekday: dayNames[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] };
 }
 
-function buildTerms(service, paymentMode, packageSnapshot, appointmentAt, deliveryMethod) {
+function buildTerms(service, paymentMode, packageSnapshot, addOns, appointmentAt, deliveryMethod, location, amountNaira) {
   const payment = paymentMode === 'escrow'
     ? 'Payment is made using Escrit escrow. Completion and release follow the transaction terms.'
     : 'Payment is made directly to the provider without escrow. Escrit cannot hold or recover the money, and reporting does not guarantee a refund.';
   return [
     `Service: ${service.title}`,
     packageSnapshot ? `Selected scope: ${packageSnapshot.name}${packageSnapshot.description ? ` — ${packageSnapshot.description}` : ''}` : '',
+    packageSnapshot ? `Package price: ₦${Number(packageSnapshot.priceNaira).toLocaleString('en-NG')}.` : '',
+    addOns.length ? `Selected extras: ${addOns.map((item) => `${item.name} — ₦${Number(item.priceNaira).toLocaleString('en-NG')}`).join('; ')}.` : '',
     appointmentAt ? `Appointment: ${appointmentAt.toISOString()} (${service.timeZone}).` : '',
-    deliveryMethod ? `Fulfilment: ${deliveryMethod}.` : '',
+    deliveryMethod ? `Fulfilment: ${deliveryMethod}${location ? ` at ${location}` : ''}.` : '',
+    deliveryMethod === 'buyer_location' && service.travelFeeNaira ? `Travel fee: ₦${Number(service.travelFeeNaira).toLocaleString('en-NG')}.` : '',
+    `Order amount before payment processing fees: ₦${Number(amountNaira).toLocaleString('en-NG')}.`,
+    service.completionConditions ? `Completion conditions: ${service.completionConditions}` : '',
     service.deliverables?.length ? `Listed deliverables: ${service.deliverables.join('; ')}` : '',
     service.cancellationTerms ? `Cancellation: ${service.cancellationTerms}` : `Cancellation policy: ${service.cancellationPolicy}.`,
     service.reschedulePolicy ? `Rescheduling: ${service.reschedulePolicy}` : '',
@@ -86,6 +152,8 @@ function buildTerms(service, paymentMode, packageSnapshot, appointmentAt, delive
 
 async function reserveDailyCapacity(serviceId, dateText, orderId, maximum) {
   const key = { serviceId, date: dateText };
+  const existing = await ServiceDailyCapacity.findOne(key).select('orderIds');
+  if (existing?.orderIds.some((id) => String(id) === String(orderId))) return;
   try {
     await ServiceDailyCapacity.updateOne(key, { $setOnInsert: key }, { upsert: true });
   } catch (error) {
@@ -115,18 +183,33 @@ async function serviceAvailability(service, dateText, now = new Date(), excludeO
   requireValidTimezone(service.timeZone);
   const expired = await ServiceOrder.find({
     sellerId: service.seller,
-    status: 'pending_approval',
+    status: { $in: ['pending_approval', 'awaiting_payment'] },
+    paymentStatus: 'unpaid',
+    transactionId: null,
     reservationActive: true,
     reservationExpiresAt: { $lte: now },
-  }).select('_id serviceId capacityDate');
+  }).select('_id serviceId capacityDate status');
   for (const order of expired) {
     const result = await ServiceOrder.updateOne(
-      { _id: order._id, status: 'pending_approval', reservationActive: true },
-      { $set: { reservationActive: false, status: 'cancelled', cancelledAt: now }, $push: { events: { status: 'cancelled', actorId: service.seller, note: 'Appointment hold expired.' } } }
+      {
+        _id: order._id,
+        status: order.status,
+        paymentStatus: 'unpaid',
+        transactionId: null,
+        reservationActive: true,
+        reservationExpiresAt: { $lte: now },
+      },
+      {
+        $set: { reservationActive: false, status: 'cancelled', cancelledAt: now },
+        $push: { events: { status: 'cancelled', actorId: service.seller, note: 'Appointment hold expired before payment.' } },
+      }
     );
     if (result.modifiedCount) await releaseDailyCapacity(order.serviceId, order.capacityDate, order._id);
   }
   const { year, month, day, weekday } = localDateParts(dateText);
+  const requestedDay = new Date(`${dateText}T00:00:00.000Z`);
+  const maximumDate = new Date(now.getTime() + service.maxAdvanceBookingDays * 86_400_000);
+  if (requestedDay > maximumDate) return [];
   const schedule = service.availability.find((entry) => entry.day === weekday);
   if (!schedule) return [];
   const dayStart = localDateTimeToUtc(dateText, '00:00', service.timeZone);
@@ -136,12 +219,13 @@ async function serviceAvailability(service, dateText, now = new Date(), excludeO
   const existing = await ServiceOrder.find({
     sellerId: service.seller,
     ...(excludeOrderId ? { _id: { $ne: excludeOrderId } } : {}),
-    appointmentAt: { $gte: dayStart, $lt: dayEnd },
+    appointmentAt: { $gte: new Date(dayStart.getTime() - 48 * 60 * 60_000), $lt: dayEnd },
     status: { $in: activeServiceReservationStatuses() },
     $or: [{ reservationExpiresAt: null }, { reservationExpiresAt: { $gt: now } }],
-  }).select('appointmentAt durationMinutes reservationActive');
+  }).select('appointmentAt durationMinutes bufferMinutes reservationActive');
+  const dailyExisting = existing.filter((order) => order.appointmentAt >= dayStart);
   const capacity = await ServiceDailyCapacity.findOne({ serviceId: service._id, date: dateText }).select('orderIds');
-  const seenOrders = new Set(existing.map((order) => String(order._id)));
+  const seenOrders = new Set(dailyExisting.map((order) => String(order._id)));
   for (const id of capacity?.orderIds || []) {
     if (!excludeOrderId || String(id) !== String(excludeOrderId)) seenOrders.add(String(id));
   }
@@ -163,12 +247,13 @@ async function serviceAvailability(service, dateText, now = new Date(), excludeO
     if (!slot || slot.getTime() < now.getTime() + service.bookingLeadTimeHours * 3_600_000) continue;
     const slotEnd = new Date(slot.getTime() + duration * 60_000);
     if (service.blockedDates.some((blocked) => overlaps(slot, slotEnd, blocked.startAt, blocked.endAt))) continue;
-    if (existing.some((order) => overlaps(
+    const overlappingOrders = existing.filter((order) => overlaps(
       slot,
-      new Date(slotEnd.getTime() + service.reservationMinutes * 60_000),
+      new Date(slotEnd.getTime() + service.bufferMinutes * 60_000),
       order.appointmentAt,
-      new Date(order.appointmentAt.getTime() + (order.durationMinutes || duration) * 60_000 + service.reservationMinutes * 60_000)
-    ))) continue;
+      new Date(order.appointmentAt.getTime() + (order.durationMinutes || duration) * 60_000 + (order.bufferMinutes ?? service.bufferMinutes) * 60_000)
+    ));
+    if (overlappingOrders.length >= (service.slotCapacity || 1)) continue;
     available.push(slot.toISOString());
   }
 
@@ -192,11 +277,34 @@ function selectedScope(service, body) {
       description: packageSnapshot.description,
       priceNaira: packageSnapshot.priceNaira,
       deliveryDays: packageSnapshot.deliveryDays,
+      revisionCount: packageSnapshot.revisionCount,
       deliverables: packageSnapshot.deliverables,
     },
     addOns,
     amountNaira: packageSnapshot.priceNaira + addOns.reduce((sum, item) => sum + item.priceNaira, 0),
   };
+}
+
+function serviceDeliveryMethods(service) {
+  if (service.deliveryMethods?.length) return service.deliveryMethods;
+  if (service.deliveryMode === 'hybrid') return ['online', 'provider_location', 'buyer_location'];
+  if (service.deliveryMode === 'in-person') return ['provider_location', 'buyer_location'];
+  return ['online'];
+}
+
+async function reserveAppointmentLane(service, appointmentAt, excludeOrderId = null) {
+  const baseKeys = slotReservationKeys(appointmentAt, service.durationMinutes, service.bufferMinutes || 0);
+  const endAt = new Date(appointmentAt.getTime() + (service.durationMinutes + (service.bufferMinutes || 0)) * 60_000);
+  const activeOrders = await ServiceOrder.find({
+    sellerId: service.seller,
+    ...(excludeOrderId ? { _id: { $ne: excludeOrderId } } : {}),
+    appointmentAt: { $lt: endAt, $gte: new Date(appointmentAt.getTime() - 48 * 60 * 60_000) },
+    status: { $in: activeServiceReservationStatuses() },
+    $or: [{ reservationExpiresAt: null }, { reservationExpiresAt: { $gt: new Date() } }],
+  }).select('slotKeys appointmentAt durationMinutes');
+  const laneKeys = allocateSlotReservationLane(baseKeys, activeOrders, service.slotCapacity || 1);
+  if (!laneKeys) throw new AppError(409, 'That appointment slot has reached its capacity. Choose another time.');
+  return laneKeys;
 }
 
 async function loadBuyerAndService(serviceId, buyerId) {
@@ -217,7 +325,38 @@ async function createOrLoadServiceOrder(service, buyerId, body) {
     if (String(existing.serviceId) !== String(service._id)) throw new AppError(409, 'That idempotency key has already been used for another service order.');
     return { order: existing, created: false };
   }
-  const { packageSnapshot, addOns, amountNaira } = selectedScope(service, body);
+  const { packageSnapshot, addOns, amountNaira: selectedAmountNaira } = selectedScope(service, body);
+  const deliveryMethods = serviceDeliveryMethods(service);
+  if (!deliveryMethods.includes(body.deliveryMethod)) throw new AppError(422, 'Choose one of the service delivery methods offered.');
+  if (body.deliveryMethod === 'buyer_location' && !body.location.trim()) {
+    throw new AppError(422, 'Enter the location where the service will be delivered.');
+  }
+  const amountNaira = selectedAmountNaira + (body.deliveryMethod === 'buyer_location' ? Number(service.travelFeeNaira || 0) : 0);
+  for (const requirement of service.buyerRequirements || []) {
+    const response = body.buyerResponses?.[requirement.key];
+    const hasResponse = Array.isArray(response)
+      ? response.some((value) => String(value).trim())
+      : String(response || '').trim().length > 0;
+    if (requirement.required && !hasResponse) {
+      throw new AppError(422, `Complete the required field: ${requirement.label}.`);
+    }
+    if (requirement.type === 'single_select' && response && !requirement.options.includes(response)) {
+      throw new AppError(422, `Choose a valid option for: ${requirement.label}.`);
+    }
+    if (requirement.type === 'multi_select' && Array.isArray(response) && response.some((value) => !requirement.options.includes(value))) {
+      throw new AppError(422, `Choose valid options for: ${requirement.label}.`);
+    }
+    if (['file', 'link'].includes(requirement.type) && response) {
+      const references = Array.isArray(response) ? response : [response];
+      if (references.some((value) => {
+        try {
+          return new URL(value).protocol !== 'https:';
+        } catch {
+          return true;
+        }
+      })) throw new AppError(422, `Add a valid HTTPS reference for: ${requirement.label}.`);
+    }
+  }
   const seller = await User.findById(service.seller);
   const options = effectivePaymentOptions(service, seller);
   if (!options[body.paymentMode]) throw new AppError(409, 'That payment option is not available for this service.');
@@ -239,12 +378,12 @@ async function createOrLoadServiceOrder(service, buyerId, body) {
     }).format(appointmentAt);
     const available = await serviceAvailability(service, dateText);
     if (!available.includes(appointmentAt.toISOString())) throw new AppError(409, 'That appointment is no longer available. Choose another time.');
-    slotKeys = slotReservationKeys(appointmentAt, service.durationMinutes, service.reservationMinutes);
+    slotKeys = await reserveAppointmentLane(service, appointmentAt);
     capacityDate = dateText;
   }
 
-  const status = service.serviceModel === 'appointment' ? 'pending_approval' : 'awaiting_payment';
-  const termsSnapshot = buildTerms(service, body.paymentMode, packageSnapshot, appointmentAt, body.deliveryMethod);
+  const status = service.serviceModel === 'appointment' && !service.instantConfirmation ? 'pending_approval' : 'awaiting_payment';
+  const termsSnapshot = buildTerms(service, body.paymentMode, packageSnapshot, addOns, appointmentAt, body.deliveryMethod, body.location, amountNaira);
   const orderId = appointmentAt ? new mongoose.Types.ObjectId() : undefined;
   try {
     if (appointmentAt) {
@@ -262,12 +401,16 @@ async function createOrLoadServiceOrder(service, buyerId, body) {
       appointmentAt,
       capacityDate,
       durationMinutes: appointmentAt ? service.durationMinutes : null,
+      bufferMinutes: appointmentAt ? service.bufferMinutes || 0 : 0,
+      reservationMinutes: service.reservationMinutes,
       timeZone: service.timeZone,
       deliveryMethod: body.deliveryMethod,
       location: body.location,
       details: body.details,
       packageSnapshot,
       addOnsSnapshot: addOns,
+      buyerRequirementsSnapshot: service.buyerRequirements || [],
+      buyerResponses: body.buyerResponses || {},
       amountKobo: Math.round(amountNaira * 100),
       termsSnapshot,
       termsAcceptedAt: new Date(),
@@ -276,7 +419,7 @@ async function createOrLoadServiceOrder(service, buyerId, body) {
       reservationActive: Boolean(appointmentAt),
       reservationExpiresAt: appointmentAt ? new Date(Date.now() + service.reservationMinutes * 60_000) : null,
       slotKeys,
-      maxRevisions: packageSnapshot ? service.maxRevisions : 0,
+      maxRevisions: packageSnapshot ? packageSnapshot.revisionCount ?? service.maxRevisions : 0,
       events: [{ status, actorId: buyerId }],
     });
     return { order, created: true };
@@ -294,20 +437,43 @@ function orderIsParticipant(order, userId) {
 }
 
 function notifyOrder(req, order, recipientId, status, message, dedupeKey = `service-order:${order.id}:${status}`) {
+  const io = req.app.get('io');
   return notifyUser({
-    io: req.app.get('io'),
+    io,
     recipientId,
     type: 'service_order',
     title: 'Service order updated',
     message,
     href: '/account/service-orders',
     dedupeKey,
+  }).then(async () => {
+    const offer = await ServiceOffer.findOne({ acceptedOrderId: order._id }).select('_id');
+    if (offer) io?.to(`offer:${offer.id}`).emit('conversation:order', order.toObject());
   });
 }
 
 async function startCheckout(order, buyerId) {
   if (String(order.buyerId) !== String(buyerId)) throw new AppError(403, 'Only the buyer can start checkout.');
   if (order.status !== 'awaiting_payment') throw new AppError(409, 'This order is not ready for payment.');
+  if (order.appointmentAt && !order.transactionId && order.reservationExpiresAt && order.reservationExpiresAt <= new Date()) {
+    const expired = await ServiceOrder.findOneAndUpdate(
+      {
+        _id: order._id,
+        status: 'awaiting_payment',
+        paymentStatus: 'unpaid',
+        transactionId: null,
+        reservationActive: true,
+        reservationExpiresAt: { $lte: new Date() },
+      },
+      {
+        $set: { status: 'cancelled', reservationActive: false, cancelledAt: new Date() },
+        $push: { events: { status: 'cancelled', actorId: buyerId, note: 'Appointment hold expired before payment.' } },
+      },
+      { new: true }
+    );
+    if (expired) await releaseDailyCapacity(expired.serviceId, expired.capacityDate, expired._id);
+    throw new AppError(409, 'This appointment hold expired. Choose another available time.');
+  }
   const buyer = await User.findById(buyerId);
   if (!buyer?.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout.');
   const service = await Service.findById(order.serviceId);
@@ -353,8 +519,15 @@ async function startCheckout(order, buyerId) {
       serviceOrderKind: order.kind,
     });
     const claimed = await ServiceOrder.findOneAndUpdate(
-      { _id: order._id, status: 'awaiting_payment', transactionId: null },
-      { $set: { transactionId: candidate._id, paymentStatus: 'processing' } },
+      {
+        _id: order._id,
+        status: 'awaiting_payment',
+        transactionId: null,
+        ...(order.appointmentAt
+          ? { $or: [{ reservationExpiresAt: null }, { reservationExpiresAt: { $gt: new Date() } }] }
+          : {}),
+      },
+      { $set: { transactionId: candidate._id, paymentStatus: 'processing', reservationExpiresAt: null } },
       { new: true }
     );
     if (claimed) {
@@ -366,6 +539,9 @@ async function startCheckout(order, buyerId) {
       const latestOrder = await ServiceOrder.findById(order._id);
       if (latestOrder?.status !== 'awaiting_payment') throw new AppError(409, 'This service order is no longer ready for payment.');
       transaction = latestOrder.transactionId ? await Transaction.findById(latestOrder.transactionId) : null;
+      if (!transaction && order.appointmentAt) {
+        throw new AppError(409, 'This appointment hold expired. Choose another available time.');
+      }
     }
   }
   if (!transaction) throw new AppError(500, 'Could not prepare this service payment.');
@@ -450,7 +626,13 @@ servicesRouter.post('/orders/:id/confirm', requireAuth, validate(orderActionSche
   if (String(order.sellerId) !== String(req.sellerId)) throw new AppError(403, 'Only the service provider can confirm this request.');
   const changed = await ServiceOrder.findOneAndUpdate(
     { _id: order._id, status: 'pending_approval' },
-    { $set: { status: 'awaiting_payment', reservationExpiresAt: null }, $push: { events: { status: 'awaiting_payment', actorId: req.sellerId, note: req.body.note } } },
+    {
+      $set: {
+        status: 'awaiting_payment',
+        reservationExpiresAt: new Date(Date.now() + (order.reservationMinutes || 30) * 60_000),
+      },
+      $push: { events: { status: 'awaiting_payment', actorId: req.sellerId, note: req.body.note } },
+    },
     { new: true }
   );
   if (!changed) throw new AppError(409, 'This request is no longer awaiting provider approval.');
@@ -593,10 +775,13 @@ servicesRouter.post('/orders/:id/reschedule-confirm', requireAuth, validate(resc
   const available = await serviceAvailability(service, dateText, new Date(), order._id);
   if (!available.includes(requestedAt.toISOString())) throw new AppError(409, 'That appointment time is no longer available. Ask the buyer to choose another time.');
   const previousAt = order.appointmentAt;
+  const previousCapacityDate = order.capacityDate;
+  await reserveDailyCapacity(service._id, dateText, order._id, service.maxBookingsPerDay);
   const update = {
     appointmentAt: requestedAt,
     capacityDate: dateText,
-    slotKeys: slotReservationKeys(requestedAt, order.durationMinutes, service.reservationMinutes),
+    slotKeys: await reserveAppointmentLane(service, requestedAt, order._id),
+    bufferMinutes: service.bufferMinutes || 0,
     requestedAppointmentAt: null,
   };
   const note = `Provider confirmed appointment change from ${previousAt.toISOString()} to ${requestedAt.toISOString()}.${req.body.note ? ` ${req.body.note}` : ''}`;
@@ -613,10 +798,17 @@ servicesRouter.post('/orders/:id/reschedule-confirm', requireAuth, validate(resc
       { new: true }
     );
   } catch (error) {
+    await releaseDailyCapacity(service._id, dateText, order._id);
     if (error?.code === 11000) throw new AppError(409, 'That appointment was just reserved by another buyer. Ask for another time.');
     throw error;
   }
-  if (!changed) throw new AppError(409, 'This appointment changed while the provider was confirming the request.');
+  if (!changed) {
+    await releaseDailyCapacity(service._id, dateText, order._id);
+    throw new AppError(409, 'This appointment changed while the provider was confirming the request.');
+  }
+  if (previousCapacityDate && previousCapacityDate !== dateText) {
+    await releaseDailyCapacity(service._id, previousCapacityDate, order._id);
+  }
   await notifyOrder(req, changed, changed.buyerId, 'rescheduled', 'The provider confirmed your new appointment time.');
   res.json({ order: changed });
 }));
@@ -636,12 +828,70 @@ servicesRouter.post('/orders/:id/start', requireAuth, validate(orderActionSchema
   res.json({ order: updated });
 }));
 
+servicesRouter.post('/orders/:id/delivery-files', requireAuth, uploadLimiter, receiveDeliveryFile, asyncHandler(async (req, res) => {
+  if (!/^[\da-f]{24}$/i.test(req.params.id)) throw new AppError(400, 'Enter a valid service order id.');
+  if (!req.file || !deliveryFileSignatureMatches(req.file)) throw new AppError(400, 'This file does not match its declared file type.');
+  const order = await ServiceOrder.findById(req.params.id);
+  if (!order) throw new AppError(404, 'Service order not found.');
+  if (String(order.sellerId) !== String(req.sellerId)) throw new AppError(403, 'Only the service provider can upload delivery files.');
+  if (order.status !== 'in_progress' || order.paymentStatus !== 'paid' || !order.transactionId) {
+    throw new AppError(409, 'Delivery files are available after the provider payment is confirmed and work is in progress.');
+  }
+  const asset = await uploadPrivateServiceDeliveryFile(req.file);
+  const deliverable = order.deliverables.create({
+    assetPublicId: asset.publicId,
+    resourceType: asset.resourceType,
+    format: asset.format,
+    mimeType: req.file.mimetype,
+    fileName: safeDeliveryFileName(req.file.originalname),
+    sizeBytes: req.file.size,
+  });
+  order.deliverables.push(deliverable);
+  try {
+    await order.save();
+  } catch (error) {
+    try {
+      await deletePrivateServiceDeliveryFile(asset);
+    } catch (cleanupError) {
+      console.error('[service-delivery] Failed to remove an unlinked upload:', cleanupError.message);
+    }
+    throw error;
+  }
+  res.status(201).json({
+    assetId: String(deliverable._id),
+    name: deliverable.fileName,
+    size: deliverable.sizeBytes,
+    mimeType: deliverable.mimeType,
+  });
+}));
+
+servicesRouter.get('/orders/:id/deliverables/:assetId', requireAuth, asyncHandler(async (req, res) => {
+  if (!/^[\da-f]{24}$/i.test(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.assetId)) {
+    throw new AppError(400, 'Enter a valid service order and delivery file id.');
+  }
+  const order = await ServiceOrder.findById(req.params.id);
+  if (!order) throw new AppError(404, 'Service order not found.');
+  if (!orderIsParticipant(order, req.sellerId)) throw new AppError(403, 'This service order belongs to another account.');
+  if (!['delivered', 'completed', 'disputed'].includes(order.status)) {
+    throw new AppError(409, 'The provider has not shared this delivery yet.');
+  }
+  const deliverable = order.deliverables.id(req.params.assetId);
+  if (!deliverable?.assetPublicId || !deliverable.resourceType) {
+    throw new AppError(404, 'This delivery file is not available.');
+  }
+  res.json({
+    url: privateServiceDeliveryAssetUrl(deliverable.assetPublicId, deliverable.resourceType, deliverable.format),
+    name: deliverable.fileName,
+  });
+}));
+
 const deliverSchema = Joi.object({
   note: Joi.string().trim().max(1000).allow('').default(''),
   deliverables: Joi.array().items(Joi.object({
-    url: Joi.string().uri({ scheme: ['https'] }).max(1000).required(),
+    assetId: Joi.string().hex().length(24),
+    url: Joi.string().uri({ scheme: ['https'] }).max(1000),
     note: Joi.string().trim().max(1000).allow('').default(''),
-  })).max(20).default([]),
+  }).xor('assetId', 'url')).max(20).default([]),
 });
 
 servicesRouter.post('/orders/:id/deliver', requireAuth, validate(deliverSchema), asyncHandler(async (req, res) => {
@@ -649,6 +899,21 @@ servicesRouter.post('/orders/:id/deliver', requireAuth, validate(deliverSchema),
   const order = await ServiceOrder.findById(req.params.id);
   if (!order) throw new AppError(404, 'Service order not found.');
   if (String(order.sellerId) !== String(req.sellerId)) throw new AppError(403, 'Only the service provider can submit delivery.');
+  const uploadedAssets = [];
+  const externalDeliverables = [];
+  for (const item of req.body.deliverables) {
+    if (item.assetId) {
+      const asset = order.deliverables.id(item.assetId);
+      if (!asset?.assetPublicId || !asset.resourceType) throw new AppError(404, 'A selected delivery file does not belong to this order.');
+      uploadedAssets.push({
+        ...asset.toObject(),
+        note: item.note,
+        submittedAt: new Date(),
+      });
+    } else {
+      externalDeliverables.push({ url: item.url, note: item.note, submittedAt: new Date() });
+    }
+  }
   const transaction = order.transactionId ? await Transaction.findById(order.transactionId).populate('linkId') : null;
   if (transaction?.status === TX_STATUS.PAID_HELD) {
     const deliveredAt = new Date();
@@ -667,10 +932,19 @@ servicesRouter.post('/orders/:id/deliver', requireAuth, validate(deliverSchema),
   const updated = await ServiceOrder.findOneAndUpdate(
     { _id: order._id, status: 'in_progress', paymentStatus: 'paid' },
     {
-      $set: { status: 'delivered' },
+      $set: {
+        status: 'delivered',
+        deliveryNote: req.body.note,
+        deliverables: [
+          ...order.deliverables.map((item) => {
+            const submitted = uploadedAssets.find((asset) => String(asset._id) === String(item._id));
+            return submitted || item.toObject();
+          }),
+          ...externalDeliverables,
+        ],
+      },
       $push: {
         events: { status: 'delivered', actorId: req.sellerId, note: req.body.note },
-        deliverables: { $each: req.body.deliverables },
       },
     },
     { new: true }

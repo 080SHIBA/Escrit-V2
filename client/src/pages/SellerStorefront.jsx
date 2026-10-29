@@ -212,7 +212,7 @@ export default function SellerStorefront() {
   const isIdentityVerified = storefrontSeller.identityVerified === true;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className={`mx-auto ${isOwnStore && workspaceTab === 'list' ? 'max-w-none' : 'max-w-6xl'}`}>
       {isOwnStore && (
         <>
           <p className="text-xs font-medium uppercase tracking-wider text-ink/50">Seller workspace</p>
@@ -312,12 +312,12 @@ export default function SellerStorefront() {
               <select id="store-sort" value={sort} onChange={(event) => setSort(event.target.value)} className="min-h-10 rounded-lg border border-line bg-input px-3 text-sm"><option value="newest">Newest</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select>
             </div>
             {visibleListings.length === 0 ? <p className="mt-5 border-y border-line py-8 text-sm text-ink/55">{listings.length ? 'No live listings match your search.' : 'This seller has no live listings yet.'}</p> : (
-              <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {visibleListings.map((item) => {
                   const terms = listingTerms(item);
                   return (
-                    <article key={`${item.listingType}:${item._id}`} className="overflow-hidden rounded-xl border border-line bg-paper">
-                      <Link to={`/listing/${encodeURIComponent(item._id)}`} className="block">
+                    <article key={`${item.listingType}:${item._id}`} className="min-w-0 overflow-hidden rounded-xl border border-line bg-paper transition-shadow hover:shadow-card motion-reduce:transition-none">
+                      <Link to={`/listing/${encodeURIComponent(item._id)}`} className="block h-full rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
                         {item.images?.[0] ? <img src={item.images[0]} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover" /> : <div className="grid aspect-[4/3] place-items-center bg-paper-2 text-3xl text-ink/30">{sellerName(storefrontSeller).charAt(0)}</div>}
                         <div className="p-3">
                           <p className="text-xs uppercase text-ink/45">{item.listingType}</p>

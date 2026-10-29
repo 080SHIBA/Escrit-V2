@@ -8,18 +8,24 @@ export function useSaved() {
     let active = true;
     api.getMarketplaceSaved()
       .then(({ items = [] }) => {
-        if (active) setSavedIds(new Set(items.map((item) => item.id)));
+        if (active) {
+          setSavedIds(new Set(items
+            .map((item) => item.listing?._id || item.listing?.id || item.id)
+            .filter(Boolean)
+            .map(String)));
+        }
       })
       .catch(() => {});
     return () => { active = false; };
   }, []);
 
   const toggleSaved = useCallback(async (listing) => {
-    const wasSaved = savedIds.has(listing.id);
+    const listingId = String(listing.id);
+    const wasSaved = savedIds.has(listingId);
     setSavedIds((current) => {
       const updated = new Set(current);
-      if (wasSaved) updated.delete(listing.id);
-      else updated.add(listing.id);
+      if (wasSaved) updated.delete(listingId);
+      else updated.add(listingId);
       return updated;
     });
     try {
@@ -29,8 +35,8 @@ export function useSaved() {
     } catch (error) {
       setSavedIds((current) => {
         const updated = new Set(current);
-        if (wasSaved) updated.add(listing.id);
-        else updated.delete(listing.id);
+        if (wasSaved) updated.add(listingId);
+        else updated.delete(listingId);
         return updated;
       });
       throw error;

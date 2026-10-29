@@ -108,16 +108,30 @@ export function publicListing(item, type) {
     sellerId: seller?._id ? String(seller._id) : String(item.seller),
     sellerName: publicSellerName(seller),
     sellerVerified: seller?.kycStatus === 'verified',
+    sellerVerificationStatus: seller?.kycStatus || 'unverified',
     sellerAvatarUrl: seller?.profilePictureUrl || '',
     sellerRatingAvg: Number(seller?.averageRating || 0),
     sellerReviewCount: Number(seller?.reviewCount || 0),
     ratingAvg: Number(item.averageRating || 0),
     ratingCount: Number(item.reviewCount || 0),
+    sellerVerified: seller?.kycStatus === 'verified',
     isFeatured: Boolean(item.isFeatured),
     paymentOptions,
     paymentOptionLabel: paymentOptionLabel(paymentOptions),
     fulfillmentMethod: seller ? effectiveFulfilment(item, seller) : item.fulfillmentMethod,
     createdAt: item.createdAt,
+    ...(type === 'service' ? {
+      serviceModel: item.serviceModel || 'appointment',
+      subcategory: item.subcategory || '',
+      startingPrice: Number(item.startingPrice || 0),
+      deliveryMode: item.deliveryMode || 'remote',
+      deliveryMethods: item.deliveryMethods || [],
+      serviceArea: item.serviceArea || '',
+      location: item.location || 'Remote',
+      durationMinutes: item.durationMinutes || null,
+      estimatedTime: item.estimatedTime || '',
+      availability: item.availability || [],
+    } : {}),
   };
 }
 
@@ -343,6 +357,8 @@ marketplaceRouter.get('/me/listings', requireAuth, asyncHandler(async (req, res)
 
 const listingUpdateSchema = Joi.object({
   active: Joi.boolean(),
+  archived: Joi.boolean(),
+  serviceData: Joi.object().unknown(true),
   paymentOptions: Joi.object({
     escrow: Joi.boolean().required(),
     direct: Joi.boolean().required(),
@@ -360,7 +376,60 @@ marketplaceRouter.patch('/me/listings/:type/:id', requireAuth, validate(listingU
   ]);
   if (!item) throw new AppError(404, 'Listing not found');
   if (!seller) throw new AppError(404, 'Seller not found');
-  if (req.body.active !== undefined) item.isActive = req.body.active;
+  if (req.body.archived !== undefined) {
+    if (req.params.type !== 'service') throw new AppError(400, 'Only service listings can be archived.');
+    item.archivedAt = req.body.archived ? new Date() : null;
+    item.isActive = !req.body.archived;
+  }
+  if (req.body.active !== undefined) {
+    item.isActive = req.body.active;
+    if (req.params.type === 'service' && req.body.active) item.archivedAt = null;
+  }
+  if (req.params.type === 'service' && req.body.serviceData !== undefined) {
+    const { error, value } = createListingSchema.validate(req.body.serviceData, { abortEarly: false, stripUnknown: true });
+    if (error) throw new AppError(400, 'Check the service details and try again.');
+    const serviceModel = value.serviceModel || 'appointment';
+    if (value.title.trim().length < 5) throw new AppError(400, 'Add a service title with at least 5 characters.');
+    if (!value.images.length || value.images.length > 8 || value.images.some((url) => !url.startsWith('https://'))) {
+      throw new AppError(400, 'Add a cover photo and use secure image links.');
+    }
+    if (serviceModel !== 'custom_quote' && !value.estimatedTime.trim()) {
+      throw new AppError(400, 'Add an estimated service delivery time.');
+    }
+    if (serviceModel === 'appointment' && (
+      value.basePrice < 100
+      || !value.availability.length
+      || value.availability.some((entry) => entry.startTime >= entry.endTime)
+    )) {
+      throw new AppError(400, 'Set an appointment price and at least one valid working day and time window.');
+    }
+    if (serviceModel === 'fixed_scope' && !value.packages.length) {
+      throw new AppError(400, 'Add at least one priced package for a fixed-scope service.');
+    }
+    if (serviceModel === 'appointment' && value.basePrice < 100) {
+      throw new AppError(400, 'Appointment services must be priced at ₦100 or more.');
+    }
+    const category = await ensureCategory('service', value.category, seller._id);
+    const fields = [
+      'title', 'summary', 'description', 'subcategory', 'images', 'serviceModel', 'packages', 'addOns',
+      'maxRevisions', 'reservationMinutes', 'pricingUnit', 'estimatedTime', 'location', 'deliveryMode',
+      'serviceRadiusKm', 'serviceArea', 'travelFeeNaira', 'durationMinutes', 'bookingLeadTimeHours',
+      'maxAdvanceBookingDays', 'slotCapacity', 'bufferMinutes', 'maxBookingsPerDay', 'instantConfirmation',
+      'timeZone', 'deliveryMethods', 'blockedDates', 'availability', 'deliverables', 'requirements',
+      'buyerRequirements', 'exclusions', 'cancellationPolicy', 'cancellationTerms', 'reschedulePolicy',
+      'responseTimeHours', 'completionConditions', 'quoteExpiryDays',
+    ];
+    fields.forEach((field) => { item[field] = value[field]; });
+    item.category = category.name;
+    item.categoryReviewStatus = category.approved ? 'approved' : 'pending';
+    item.basePrice = serviceModel === 'fixed_scope'
+      ? Math.min(...value.packages.map((servicePackage) => Number(servicePackage.priceNaira)))
+      : Number(value.basePrice || 0);
+    item.startingPrice = serviceModel === 'custom_quote'
+      ? Number(value.startingPrice || value.basePrice || 0)
+      : 0;
+    await ListingDraft.deleteOne({ seller: req.sellerId, listingId: item._id });
+  }
   if (req.body.paymentOptions !== undefined || req.body.overridesDefault !== undefined) {
     const overridesDefault = req.body.overridesDefault
       ?? (req.body.paymentOptions !== undefined ? true : item.overridesDefault);
@@ -603,7 +672,10 @@ const createListingSchema = Joi.object({
   refundable: Joi.boolean().default(false),
   refundConditions: Joi.string().allow('').default(''),
   basePrice: Joi.number().min(0).default(0),
+  summary: Joi.string().trim().max(240).allow('').default(''),
+  subcategory: Joi.string().trim().max(80).allow('').default(''),
   serviceModel: Joi.string().valid('appointment', 'fixed_scope', 'custom_quote').default('appointment'),
+  startingPrice: Joi.number().min(0).default(0),
   packages: Joi.array().items(Joi.object({
     key: Joi.string().trim().pattern(/^[a-z0-9_-]+$/i).max(48).required(),
     name: Joi.string().trim().min(1).max(80).required(),
@@ -626,10 +698,21 @@ const createListingSchema = Joi.object({
   location: Joi.string().default('Remote'),
   deliveryMode: Joi.string().valid('remote', 'in-person', 'hybrid').default('remote'),
   serviceRadiusKm: Joi.number().min(0).max(1000).default(0),
+  serviceArea: Joi.string().trim().max(240).allow('').default(''),
+  travelFeeNaira: Joi.number().min(0).max(100000000).default(0),
   durationMinutes: Joi.number().integer().min(15).max(1440).default(60),
   bookingLeadTimeHours: Joi.number().integer().min(0).max(8760).default(24),
+  maxAdvanceBookingDays: Joi.number().integer().min(1).max(730).default(90),
+  slotCapacity: Joi.number().integer().min(1).max(100).default(1),
+  bufferMinutes: Joi.number().integer().min(0).max(1440).default(0),
   maxBookingsPerDay: Joi.number().integer().min(1).max(100).default(4),
+  instantConfirmation: Joi.boolean().default(false),
   timeZone: Joi.string().max(80).default('Africa/Lagos'),
+  deliveryMethods: Joi.array().items(Joi.string().valid('online', 'provider_location', 'buyer_location', 'remote_deliverable')).unique().max(4).default([]),
+  blockedDates: Joi.array().items(Joi.object({
+    startAt: Joi.date().iso().required(),
+    endAt: Joi.date().iso().greater(Joi.ref('startAt')).required(),
+  })).max(100).default([]),
   availability: Joi.array().items(Joi.object({
     day: Joi.string().valid('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday').required(),
     startTime: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required(),
@@ -637,9 +720,20 @@ const createListingSchema = Joi.object({
   })).unique('day').max(7).default([]),
   deliverables: Joi.array().items(Joi.string().max(160)).max(30).default([]),
   requirements: Joi.array().items(Joi.string().max(160)).max(30).default([]),
+  buyerRequirements: Joi.array().items(Joi.object({
+    key: Joi.string().trim().pattern(/^[a-z0-9_-]+$/i).max(48).required(),
+    label: Joi.string().trim().min(1).max(160).required(),
+    type: Joi.string().valid('short_text', 'long_text', 'single_select', 'multi_select', 'file', 'link').required(),
+    required: Joi.boolean().default(false),
+    options: Joi.array().items(Joi.string().trim().min(1).max(120)).max(20).default([]),
+  })).max(20).default([]),
+  exclusions: Joi.array().items(Joi.string().trim().max(240)).max(30).default([]),
   cancellationPolicy: Joi.string().valid('flexible', 'moderate', 'strict', 'custom').default('moderate'),
   cancellationTerms: Joi.string().max(1000).allow('').default(''),
   reschedulePolicy: Joi.string().max(500).allow('').default(''),
+  responseTimeHours: Joi.number().integer().min(1).max(720).default(48),
+  completionConditions: Joi.string().trim().max(2000).allow('').default(''),
+  quoteExpiryDays: Joi.number().integer().min(1).max(90).default(7),
 });
 
 async function ensureCategory(type, name, requestedBy) {
@@ -722,6 +816,9 @@ async function createMarketplaceListing(type, body, sellerId, io) {
     payload.basePrice = body.serviceModel === 'fixed_scope'
       ? Math.min(...body.packages.map((item) => Number(item.priceNaira)))
       : Number(body.basePrice || 0);
+    payload.startingPrice = body.serviceModel === 'custom_quote'
+      ? Number(body.startingPrice || body.basePrice || 0)
+      : 0;
     payload.serviceModel = body.serviceModel || 'appointment';
     payload.packages = body.packages || [];
     payload.addOns = body.addOns || [];
@@ -766,11 +863,11 @@ async function createMarketplaceListing(type, body, sellerId, io) {
 const listingDraftSchema = Joi.object({
   status: Joi.string().valid('draft', 'live').default('draft'),
   type: Joi.string().valid('product', 'service', 'course').required(),
-  title: Joi.string().max(80).allow('').default(''),
+  title: Joi.string().max(120).allow('').default(''),
   category: Joi.string().max(80).allow('').default(''),
-  description: Joi.string().max(1000).allow('').default(''),
+  description: Joi.string().max(2000).allow('').default(''),
   price: Joi.number().min(0).default(0),
-  images: Joi.array().items(Joi.string().uri({ scheme: ['https'] })).max(5).default([]),
+  images: Joi.array().items(Joi.string().uri({ scheme: ['https'] })).max(8).default([]),
   allowOffers: Joi.boolean().default(false),
   condition: Joi.string().valid('new', 'used').default('new'),
   fulfillment: Joi.string().valid('delivery', 'pickup', 'delivery-or-pickup', 'digital-download').default('delivery'),
@@ -785,17 +882,33 @@ const listingDraftSchema = Joi.object({
   format: Joi.string().valid('self-paced-videos', 'live-cohort', 'pdf-ebook').default('self-paced-videos'),
   level: Joi.string().valid('beginner', 'intermediate', 'advanced').default('beginner'),
   duration: Joi.string().max(120).allow('').default(''),
+  serviceData: Joi.object().unknown(true).default({}),
+  listingId: Joi.string().hex().length(24).allow(null).default(null),
+  formData: Joi.object().unknown(true).default({}),
 }).unknown(false);
 
 function validatePublishableListing(listing) {
+  const serviceModel = listing.type === 'service' ? listing.serviceData?.serviceModel || 'appointment' : null;
   if (listing.title.trim().length < 5) throw new AppError(400, 'Add a title with at least 5 characters.');
   if (!listing.category) throw new AppError(400, 'Choose a category.');
-  if (listing.price <= 0 && !(listing.type === 'service' && listing.serviceModel === 'custom_quote')) throw new AppError(400, 'Enter a price above zero.');
+  if (listing.price <= 0 && !(listing.type === 'service' && serviceModel === 'custom_quote')) throw new AppError(400, 'Enter a price above zero.');
   if (listing.overridesDefault && !listing.paymentOptions.escrow && !listing.paymentOptions.direct) {
     throw new AppError(400, 'Choose at least one payment option.');
   }
   if (['product', 'course'].includes(listing.type) && listing.images.length < 1) throw new AppError(400, 'Add at least one photo.');
-  if (listing.type === 'service' && !listing.deliveryTime.trim()) throw new AppError(400, 'Add an estimated service delivery time.');
+  if (listing.type === 'service' && listing.images.length < 1) throw new AppError(400, 'Add a cover photo for your service.');
+  if (listing.type === 'service' && serviceModel !== 'custom_quote' && !listing.deliveryTime.trim()) {
+    throw new AppError(400, 'Add an estimated service delivery time.');
+  }
+  if (listing.type === 'service' && serviceModel === 'appointment') {
+    const schedule = listing.serviceData.availability || [];
+    if (listing.serviceData.basePrice < 100 || !schedule.length || schedule.some((entry) => entry.startTime >= entry.endTime)) {
+      throw new AppError(400, 'Set an appointment price and at least one valid working day and time window.');
+    }
+  }
+  if (listing.type === 'service' && serviceModel === 'fixed_scope' && !listing.serviceData.packages?.length) {
+    throw new AppError(400, 'Add at least one priced package for your fixed-scope service.');
+  }
   if (listing.type === 'course' && !listing.duration.trim()) throw new AppError(400, 'Add a course duration or number of lessons.');
 }
 
@@ -831,11 +944,11 @@ function marketplacePayload(listing) {
   if (listing.type === 'service') {
     return {
       ...common,
-      basePrice: listing.price,
-      estimatedTime: listing.deliveryTime,
-      serviceModel: listing.serviceModel || 'appointment',
-      packages: listing.packages || [],
-      addOns: listing.addOns || [],
+      ...(listing.serviceData || {}),
+      title: listing.title,
+      category: listing.category,
+      description: listing.description,
+      images: listing.images,
     };
   }
   return {
@@ -987,7 +1100,9 @@ async function publicListingDetail(item, type) {
     estimatedTime: item.estimatedTime,
     coordination: item.deliveryMode === 'in-person' ? 'In person' : item.deliveryMode === 'hybrid' ? 'Remote or in person' : 'Remote',
     scheduling: item.serviceModel === 'appointment'
-      ? 'Choose an available appointment time; the provider confirms the request before payment.'
+      ? item.instantConfirmation
+        ? 'Choose an available appointment time and continue to payment.'
+        : 'Choose an available appointment time; the provider confirms the request before payment.'
       : item.serviceModel === 'custom_quote'
         ? 'Agree scope, price and timing in Escrit chat before accepting a proposal.'
         : 'Choose the listed package and review its saved scope before payment.',
@@ -995,6 +1110,13 @@ async function publicListingDetail(item, type) {
     location: item.location,
     durationMinutes: item.durationMinutes,
     bookingLeadTimeHours: item.bookingLeadTimeHours,
+    maxAdvanceBookingDays: item.maxAdvanceBookingDays,
+    slotCapacity: item.slotCapacity,
+    bufferMinutes: item.bufferMinutes,
+    instantConfirmation: item.instantConfirmation,
+    deliveryMethods: item.deliveryMethods || [],
+    serviceArea: item.serviceArea || '',
+    travelFeeNaira: item.travelFeeNaira || 0,
     timeZone: item.timeZone,
     availability: item.availability,
     included: item.deliverables || [],
@@ -1094,6 +1216,14 @@ listingWorkflowRouter.post('/', asyncHandler(async (req, res) => {
     return res.status(200).json({ draft });
   }
   validatePublishableListing(value);
+  if (value.type === 'service') {
+    const { error: serviceError, value: serviceData } = createListingSchema.validate(value.serviceData, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+    if (serviceError) throw new AppError(400, 'Check the service details and try again.');
+    value.serviceData = serviceData;
+  }
   const item = await createMarketplaceListing(value.type, marketplacePayload(value), req.sellerId, req.app.get('io'));
   await ListingDraft.deleteOne({ seller: req.sellerId });
   res.status(201).json({ item, listingType: value.type });
@@ -1228,7 +1358,7 @@ marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Unsupported listing type' });
   }
 
-  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed transactionPreferences onboarding.fulfilmentDefault');
+  const items = await config.Model.find({ isActive: true, isVerified: true }).sort({ isFeatured: -1, promotionUntil: -1, createdAt: -1 }).populate('seller', 'businessName displayName fullName profilePictureUrl isDemoSeed kycStatus transactionPreferences onboarding.fulfilmentDefault');
   items.forEach((item) => sanitizePublicSeller(item.seller));
   const links = await Link.find({ _id: { $in: items.map((item) => item.escrowLinkId).filter(Boolean) } });
   await Promise.all(links.map(ensureCheckoutPrice));
@@ -1239,6 +1369,7 @@ marketplaceRouter.get('/:type', asyncHandler(async (req, res) => {
     item.set('paymentOptions', options, { strict: false });
     item.set('paymentOptionLabel', paymentOptionLabel(options), { strict: false });
     item.set('fulfillmentMethod', effectiveFulfilment(item, item.seller), { strict: false });
+    item.set('sellerVerified', item.seller?.kycStatus === 'verified', { strict: false });
   }
   res.json({ items });
 }));
@@ -1398,5 +1529,6 @@ marketplaceRouter.post('/:type/:id/reviews', requireAuth, validate(reviewSchema)
 
 marketplaceRouter.post('/:type', requireAuth, validate(createListingSchema), asyncHandler(async (req, res) => {
   const item = await createMarketplaceListing(req.params.type, req.body, req.sellerId, req.app.get('io'));
+  await ListingDraft.deleteOne({ seller: req.sellerId });
   res.status(201).json({ item });
 }));

@@ -36,6 +36,7 @@ function toOrder(transaction, role, counterparty) {
   return {
     id: String(transaction._id),
     title: link.itemName,
+    listingType: link.listingType || link.fulfillmentType || 'product',
     counterparty: counterparty || 'Escrit buyer',
     storefrontId: role === 'buy' ? String(link.sellerId?._id || link.sellerId) : null,
     amount: ((transaction.buyerPriceKoboSnapshot ?? transaction.checkoutTotalKobo ?? 0) * (transaction.checkoutQuantity || 1)) / 100,
@@ -62,7 +63,7 @@ ordersRouter.get('/', asyncHandler(async (req, res) => {
   if (role === 'sell') {
     const links = await Link.find({ sellerId: req.sellerId }).select('_id');
     transactions = await Transaction.find({ linkId: { $in: links.map((link) => link._id) } })
-      .sort({ createdAt: -1 }).populate('linkId', 'itemName');
+      .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType');
     const buyerIds = transactions.map((tx) => tx.buyerUserId).filter(Boolean);
     const buyers = await User.find({ _id: { $in: buyerIds } }).select('displayName businessName');
     const buyerById = new Map(buyers.map((buyer) => [String(buyer._id), buyer.displayName || buyer.businessName]));
@@ -74,7 +75,7 @@ ordersRouter.get('/', asyncHandler(async (req, res) => {
   }
 
   transactions = await Transaction.find({ buyerUserId: req.sellerId })
-    .sort({ createdAt: -1 }).populate('linkId', 'itemName sellerId');
+    .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType sellerId');
   const sellerIds = transactions.map((tx) => tx.linkId?.sellerId).filter(Boolean);
   const sellers = await User.find({ _id: { $in: sellerIds } }).select('displayName businessName fullName');
   const sellerById = new Map(sellers.map((seller) => [String(seller._id), publicSellerName(seller)]));

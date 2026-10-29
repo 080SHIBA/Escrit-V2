@@ -76,6 +76,8 @@ export function createApp() {
   app.use('/api/listings', listingWorkflowRouter);
   app.use('/api/uploads', uploadsRouter);
   app.use('/api/service-offers', serviceOffersRouter);
+  app.use('/api/conversations', serviceOffersRouter);
+  app.use('/api/offers', serviceOffersRouter);
   app.use('/api/services', servicesRouter);
   app.use('/api/product-offers', productOffersRouter);
   app.use('/api/orders', ordersRouter);

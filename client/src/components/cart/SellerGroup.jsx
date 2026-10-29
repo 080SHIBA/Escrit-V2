@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Store } from 'lucide-react';
 import CartItem from './CartItem.jsx';
-import ChatNowButton from './ChatNowButton.jsx';
+import ChatNowButton from '../ChatNowButton.jsx';
 
 export default function SellerGroup({ group, busy, viewMode = 'list', onUpdate, onRemove, onSaveForLater }) {
   const firstItem = group.items[0];
@@ -18,7 +18,13 @@ export default function SellerGroup({ group, busy, viewMode = 'list', onUpdate, 
             <p className="mt-1 text-xs text-ink/55">{group.sellerVerified ? 'Verified' : 'Verification pending'}</p>
           </div>
         </div>
-        <ChatNowButton sellerId={group.sellerId} listingId={firstItem.listing._id} listingType={firstItem.listingType} />
+        <ChatNowButton
+          sellerId={group.sellerId}
+          listingId={firstItem.listing._id}
+          listingType={firstItem.listingType}
+          title={firstItem.listing.title}
+          sellerName={group.sellerName}
+        />
       </header>
       <div className={viewMode === 'grid' ? 'grid gap-3 xl:grid-cols-2' : 'divide-y divide-line'}>
         {group.items.map((entry) => (

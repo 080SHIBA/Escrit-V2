@@ -46,6 +46,24 @@ export function slotReservationKeys(startAt, durationMinutes, bufferMinutes = 0)
   return keys;
 }
 
+export function allocateSlotReservationLane(baseKeys, orders, capacity) {
+  const occupied = new Set();
+  for (const order of orders) {
+    for (const key of order.slotKeys || []) {
+      const separator = key.lastIndexOf('|capacity:');
+      const slotKey = key.slice(0, separator < 0 ? undefined : separator);
+      const lane = separator < 0 ? 0 : Number(key.slice(separator + 10));
+      occupied.add(`${slotKey}|${lane}`);
+    }
+  }
+  for (let lane = 0; lane < capacity; lane += 1) {
+    if (baseKeys.every((key) => !occupied.has(`${key}|${lane}`))) {
+      return baseKeys.map((key) => `${key}|capacity:${lane}`);
+    }
+  }
+  return null;
+}
+
 export function overlaps(startA, endA, startB, endB) {
   return new Date(startA) < new Date(endB) && new Date(startB) < new Date(endA);
 }
