@@ -9,7 +9,7 @@ import { CopyIcon, ClockIcon, AlertIcon } from '../../components/icons.jsx';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import SpotlightTour from '../../components/SpotlightTour.jsx';
 import PhotoField from '../../components/PhotoField.jsx';
-import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../shared/releaseConditions.js';
 
 const TOUR_STEPS = [
   {

@@ -13,8 +13,8 @@ import { createUploadSignature } from '../services/cloudinary.js';
 import { quoteCollectionFee } from '../services/paymentProvider.js';
 import { refundProductNoShow, resolveNonRefundableProductNoShow } from '../services/escrow.js';
 import { env } from '../config/env.js';
-import { deliveryReleaseTime } from '../../../shared/orderState.js';
-import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
+import { deliveryReleaseTime } from '../shared/orderState.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../shared/releaseConditions.js';
 
 export const linksRouter = Router();
 linksRouter.use(requireAuth);

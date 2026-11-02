@@ -1,4 +1,4 @@
-import { MARKETPLACE_CATEGORIES_BY_TYPE } from '../../../shared/marketplaceCategories.js';
+import { MARKETPLACE_CATEGORIES_BY_TYPE } from '../shared/marketplaceCategories.js';
 
 /**
  * @typedef {'product' | 'service' | 'course'} ListingType

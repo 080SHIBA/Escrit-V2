@@ -6,8 +6,8 @@ import {
   normalizeReleaseWindowHours,
   releaseRuleText,
   releaseWindowLabel,
-} from '../../../shared/releaseConditions.js';
-import { deliveryReleaseTime } from '../../../shared/orderState.js';
+} from '../shared/releaseConditions.js';
+import { deliveryReleaseTime } from '../shared/orderState.js';
 
 test('release windows are a fixed set with the existing 72-hour behavior as default', () => {
   assert.deepEqual(RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours), [24, 72, 168]);

@@ -9,7 +9,7 @@ import { Transaction, TX_STATUS } from '../models/Transaction.js';
 import { User } from '../models/User.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
 import { raiseDispute, releaseOnBuyerConfirmation } from '../services/escrow.js';
-import { deliveryReleaseTime } from '../../../shared/orderState.js';
+import { deliveryReleaseTime } from '../shared/orderState.js';
 import { notifyDisputeRaised } from '../services/notificationEvents.js';
 
 export const ordersRouter = Router();

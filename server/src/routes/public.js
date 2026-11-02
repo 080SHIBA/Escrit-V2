@@ -25,7 +25,7 @@ import { Service } from '../models/Service.js';
 import { notifyDisputeRaised } from '../services/notificationEvents.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
-import { DEFAULT_RELEASE_WINDOW_HOURS } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS } from '../shared/releaseConditions.js';
 
 export const publicRouter = Router();
 publicRouter.use(publicLimiter);
