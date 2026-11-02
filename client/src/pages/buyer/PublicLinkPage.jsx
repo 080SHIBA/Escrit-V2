@@ -11,7 +11,7 @@ import { LockIcon, ShieldCheckIcon, ClockIcon } from '../../components/icons.jsx
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import GoogleSignInButton from '../../components/GoogleSignInButton.jsx';
-import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, releaseRuleText } from '../../shared/releaseConditions.js';
 
 const TOUR_STEPS = [
   {

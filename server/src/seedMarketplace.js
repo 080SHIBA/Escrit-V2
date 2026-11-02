@@ -6,7 +6,7 @@ import { Service } from './models/Service.js';
 import { Course } from './models/Course.js';
 import { Link } from './models/Link.js';
 import { ProductCategory, ServiceCategory, CourseCategory } from './models/ListingCategory.js';
-import { MARKETPLACE_CATEGORIES_BY_TYPE } from '../../shared/marketplaceCategories.js';
+import { MARKETPLACE_CATEGORIES_BY_TYPE } from './shared/marketplaceCategories.js';
 
 const categories = MARKETPLACE_CATEGORIES_BY_TYPE;
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
-import { transitionOrder } from '../../../shared/orderState.js';
-import { deliveryReleaseTime } from '../../../shared/orderState.js';
+import { transitionOrder } from '../shared/orderState.js';
+import { deliveryReleaseTime } from '../shared/orderState.js';
 
 export function useOrders(role) {
   const [orders, setOrders] = useState(null);

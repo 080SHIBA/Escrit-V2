@@ -7,7 +7,7 @@ import {
   isAutomaticReleaseDue,
   orderListingType,
   transitionOrder,
-} from '../../../shared/orderState.js';
+} from '../shared/orderState.js';
 
 const order = (stage, disputed = false) => ({ stage, disputed });
 

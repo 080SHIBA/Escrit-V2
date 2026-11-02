@@ -15,7 +15,7 @@ import {
   filterOrders,
   orderFilter,
   orderListingType,
-} from '../../../../shared/orderState.js';
+} from '../../shared/orderState.js';
 
 const currency = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
 

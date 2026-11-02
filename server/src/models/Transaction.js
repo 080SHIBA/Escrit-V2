@@ -3,7 +3,7 @@
 // never set from client input. A link can have many transactions open at
 // once, each resolved independently.
 import mongoose from 'mongoose';
-import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../../../shared/releaseConditions.js';
+import { DEFAULT_RELEASE_WINDOW_HOURS, RELEASE_WINDOW_OPTIONS } from '../shared/releaseConditions.js';
 
 const releaseWindowValues = RELEASE_WINDOW_OPTIONS.map(({ hours }) => hours);
 
