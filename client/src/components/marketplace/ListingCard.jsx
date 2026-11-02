@@ -3,6 +3,7 @@ import { BadgeCheck, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import RatingStars from './RatingStars.jsx';
 import { getMarketplaceCardAction } from '../../lib/marketplaceState.js';
+import { prefetchListingDetail } from '../../hooks/useListingDetail.js';
 
 export default function ListingCard({
   listing,
@@ -44,7 +45,7 @@ export default function ListingCard({
       className="group min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-[3px] hover:border-accent hover:shadow-card-md motion-reduce:transition-none"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-forest-50 dark:bg-forest-900">
-        <Link to={detailPath} aria-label={`View ${listing.title}`} className="absolute inset-0 block focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
+        <Link to={detailPath} onPointerEnter={() => prefetchListingDetail(listing.id)} onTouchStart={() => prefetchListingDetail(listing.id)} aria-label={`View ${listing.title}`} className="absolute inset-0 block focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
           {!imageFailed ? (
             <img src={listing.coverUrl} alt={listing.title} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none" />
           ) : (

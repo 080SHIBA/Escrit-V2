@@ -63,7 +63,9 @@ test('provides category options tailored to products, services, and courses', ()
   assert.ok(MARKETPLACE_CATEGORIES_BY_TYPE.course.includes('Cybersecurity'));
   assert.ok(MARKETPLACE_CATEGORIES_BY_TYPE.course.includes('Dropshipping'));
   assert.ok(MARKETPLACE_CATEGORIES_BY_TYPE.course.includes('Web Development'));
-  assert.ok(MARKETPLACE_CATEGORIES_BY_TYPE.service.includes('Digital Marketing'));
+  // WHY: "Digital Marketing" is a field of study, not a kind of service, so it
+  // belongs to courses only and must never be offered as a service category.
+  assert.ok(!MARKETPLACE_CATEGORIES_BY_TYPE.service.includes('Digital Marketing'));
   assert.ok(MARKETPLACE_CATEGORIES_BY_TYPE.product.includes('Electronics'));
   assert.notDeepEqual(MARKETPLACE_CATEGORIES_BY_TYPE.product, MARKETPLACE_CATEGORIES_BY_TYPE.course);
 });

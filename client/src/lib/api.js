@@ -79,7 +79,13 @@ async function request(path, { method = 'GET', body, auth = false, signal } = {}
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const details = Array.isArray(data.details) ? data.details.join(' ') : '';
-    throw new Error(details ? `${data.error || 'Validation failed'}: ${details}` : data.error || `Request failed (${res.status})`);
+    const failure = new Error(details ? `${data.error || 'Validation failed'}: ${details}` : data.error || `Request failed (${res.status})`);
+    // WHAT: expose the HTTP status on the error.
+    // WHY: callers (notably the session restore) must tell "the server said
+    // no" (401) apart from "the server is asleep or unreachable" (5xx, abort,
+    // network error) and they cannot do that reliably by parsing messages.
+    failure.status = res.status;
+    throw failure;
   }
   return data;
 }
@@ -167,7 +173,9 @@ export const api = {
   // Auth
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
-  refresh: () => request('/auth/refresh', { method: 'POST' }),
+  // WHY signal: the session restore aborts a hung request (cold server) so it
+  // can retry, instead of waiting on the browser's very long default timeout.
+  refresh: ({ signal } = {}) => request('/auth/refresh', { method: 'POST', signal }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me', { auth: true }),
   googleConfig: () => request('/auth/google/config'),
@@ -221,13 +229,20 @@ export const api = {
     : request('/seller/bank-account', { method: 'POST', body: payload, auth: true }),
   getPayoutData: () => bankAccountMocksEnabled
     ? bankAccountMockHandlers.payoutData()
-    : Promise.all([
+    // WHAT: load the summary and the payout history side by side.
+    // WHY allSettled: they are independent. If one fails the other should
+    // still render; we only throw when BOTH fail so the page can show its
+    // error state instead of an empty screen.
+    : Promise.allSettled([
       request('/marketplace/me/analytics', { auth: true }),
       request('/seller/payout-history', { auth: true }),
-    ]).then(([analytics, history]) => ({
-      summary: analytics.financialSummary,
-      payouts: history.payouts,
-    })),
+    ]).then(([analytics, history]) => {
+      if (analytics.status === 'rejected' && history.status === 'rejected') throw analytics.reason;
+      return {
+        summary: analytics.status === 'fulfilled' ? analytics.value.financialSummary : null,
+        payouts: history.status === 'fulfilled' ? history.value.payouts : [],
+      };
+    }),
   updateSellerProfile: (payload) => kycMocksEnabled
     ? kycMockHandlers.updateProfile(payload)
     : request('/profile', { method: 'PATCH', body: payload, auth: true }),
