@@ -1,5 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, setAccessToken } from './api.js';
+import { clearSessionHint, hasSessionHint, setSessionHint } from './sessionHint.js';
+import { clearPrivateCache } from './queryCache.js';
+
+// WHAT: tuning values for restoring a session against a server that may be
+// asleep.
+// WHY: a cold start can take a minute or more. Each attempt is capped so a hung
+// request is abandoned and retried, and the growing delays avoid hammering a
+// server that is still booting. Total patience is roughly 1.5 minutes.
+const REFRESH_TIMEOUT_MS = 12000;
+const RETRY_DELAYS_MS = [2000, 4000, 8000, 10000, 10000, 10000];
+const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const authMocksOn = () => import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true';
 
 // Single source of truth for who is signed in and whether they have a
 // bank account, so every page reads one seller record and one refresh
@@ -7,8 +19,18 @@ import { api, setAccessToken } from './api.js';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [status, setStatus] = useState('checking'); // checking | authed | anon
+  // WHAT: starting status.
+  // WHY: a first-time visitor (no hint) cannot have a session, so they start as
+  // 'anon' and every public page renders immediately instead of showing a
+  // skeleton for as long as the server takes to answer. Only returning users
+  // (hint present) and demo-mock mode start as 'checking'.
+  const [status, setStatus] = useState(() => (authMocksOn() || hasSessionHint() ? 'checking' : 'anon')); // checking | authed | anon
   const [seller, setSeller] = useState(null);
+  // WHAT: true while the first session restore is still running in the background.
+  // WHY: a visitor with no hint may still hold a valid cookie (for example the
+  // hint was cleared). Protected pages must wait for this to settle instead of
+  // bouncing that user to the sign-in page, while public pages ignore it.
+  const [restoring, setRestoring] = useState(true);
 
   const loadSeller = useCallback(async () => {
     try {
@@ -21,30 +43,69 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true') {
+    // Demo mode restores from localStorage and never talks to the server.
+    if (authMocksOn()) {
       try {
         const demoSeller = window.localStorage.getItem('escrit:auth-demo-seller');
         if (demoSeller) {
           setSeller(JSON.parse(demoSeller));
           setAccessToken('demo-auth-token');
           setStatus('authed');
-          return;
+          setRestoring(false);
+          return undefined;
         }
       } catch {
-        setStatus('anon');
-        return;
+        // Fall through to anonymous below.
       }
       setStatus('anon');
-      return;
+      setRestoring(false);
+      return undefined;
     }
-    api
-      .refresh()
-      .then(async ({ accessToken }) => {
-        setAccessToken(accessToken);
-        await loadSeller();
-        setStatus('authed');
-      })
-      .catch(() => setStatus('anon'));
+
+    let cancelled = false;
+    const returningUser = hasSessionHint();
+
+    // WHAT: ask the server for a fresh access token using the refresh cookie.
+    // WHY retries: a network error, timeout or 5xx means "server not ready",
+    // not "you are logged out". Returning users get several attempts. A real
+    // 401/403 means the session is genuinely gone, so we stop at once.
+    async function restoreSession() {
+      const maxAttempts = returningUser ? RETRY_DELAYS_MS.length + 1 : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+        try {
+          const { accessToken } = await api.refresh({ signal: controller.signal });
+          window.clearTimeout(timer);
+          if (cancelled) return;
+          setAccessToken(accessToken);
+          await loadSeller();
+          if (cancelled) return;
+          setSessionHint();
+          setStatus('authed');
+          setRestoring(false);
+          return;
+        } catch (error) {
+          window.clearTimeout(timer);
+          if (cancelled) return;
+          if (error?.status === 401 || error?.status === 403) {
+            clearSessionHint();
+            setStatus('anon');
+            setRestoring(false);
+            return;
+          }
+          if (attempt < maxAttempts - 1) await sleep(RETRY_DELAYS_MS[attempt]);
+          if (cancelled) return;
+        }
+      }
+      // WHY keep the hint here: the server was unreachable, which says nothing
+      // about the session. The next page load will try again.
+      setStatus('anon');
+      setRestoring(false);
+    }
+
+    restoreSession();
+    return () => { cancelled = true; };
   }, [loadSeller]);
 
   useEffect(() => {
@@ -62,13 +123,19 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(
     async (accessToken, sessionSeller = null) => {
+      // WHY wipe first: a different account may be signing in on this browser;
+      // the previous person's cached orders, cart and favourites must not show.
+      clearPrivateCache();
       setAccessToken(accessToken);
       if (sessionSeller) setSeller(sessionSeller);
       else await loadSeller();
       if (import.meta.env.DEV && import.meta.env.VITE_AUTH_MOCKS === 'true' && accessToken === 'demo-auth-token' && sessionSeller) {
         window.localStorage.setItem('escrit:auth-demo-seller', JSON.stringify(sessionSeller));
       }
+      // WHY: remember this browser so the next visit restores the session patiently.
+      setSessionHint();
       setStatus('authed');
+      setRestoring(false);
     },
     [loadSeller]
   );
@@ -84,6 +151,10 @@ export function AuthProvider({ children }) {
           // The in-memory session is cleared even if browser storage is unavailable.
         }
       }
+      // WHY: after an explicit logout this browser has no session to restore.
+      clearSessionHint();
+      // WHY: private cached data belongs to the account that just left.
+      clearPrivateCache();
       setAccessToken(null);
       setSeller(null);
       setStatus('anon');
@@ -96,6 +167,7 @@ export function AuthProvider({ children }) {
 
   const value = {
     status,
+    restoring,
     seller,
     hasBankAccount: Boolean(seller?.bankAccount),
     login,

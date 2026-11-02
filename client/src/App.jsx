@@ -67,19 +67,15 @@ function MarketplaceRedirect() {
   return <Navigate to={{ pathname: `/marketplace/${categoryPath}`, search: query ? `?${query}` : '' }} replace />;
 }
 
+// WHAT: The "/" route.
+// WHY: the landing page is public, so it must never wait on the server. Signed-in
+// users are sent to the marketplace; returning users whose session is still
+// being restored go there too (it is public, so nothing breaks if the restore
+// ends up failing). Everyone else sees the landing page immediately.
 function HomeRoute() {
   const { status } = useAuthContext();
 
-  if (status === 'authed') return <Navigate to="/marketplace" replace />;
-  if (status === 'checking') {
-    return (
-      <div className="space-y-3" aria-busy="true" aria-label="Checking your session">
-        <div className="skeleton h-8 w-48" />
-        <div className="skeleton h-24 w-full" />
-        <div className="skeleton h-24 w-full" />
-      </div>
-    );
-  }
+  if (status === 'authed' || status === 'checking') return <Navigate to="/marketplace" replace />;
   return <Home />;
 }
 

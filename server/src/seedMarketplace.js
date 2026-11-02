@@ -92,7 +92,7 @@ const services = [
   ['WordPress business website refresh', 'Web Development', 195000, 'project', '2 weeks', 'Remote'],
   ['Product design portfolio review', 'Graphic Design & Branding', 40000, 'session', '90 minutes', 'Remote'],
   ['Brand identity starter package', 'Graphic Design & Branding', 185000, 'project', '10 business days', 'Remote'],
-  ['Social media content calendar', 'Digital Marketing', 68000, 'month', '12 post ideas', 'Remote'],
+  ['Social media content calendar', 'Professional Services', 68000, 'month', '12 post ideas', 'Remote'],
   ['Podcast recording and editing session', 'Photography & Video', 85000, 'session', '2 hours', 'Lagos'],
   ['Beginner strength-training coaching', 'Beauty & Wellness', 28000, 'session', '60 minutes', 'Abuja'],
   ['Meal planning consultation', 'Beauty & Wellness', 35000, 'session', '75 minutes', 'Remote'],

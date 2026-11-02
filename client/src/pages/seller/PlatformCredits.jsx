@@ -14,7 +14,13 @@ export default function PlatformCredits() {
 
   async function load() {
     try {
-      const [credits, ownedListings] = await Promise.all([api.getPlatformCredits(), api.getMyListings()]);
+      // WHY allSettled: the credit balance and the seller's listings are
+      // independent, so one failing should not hide the other.
+      const [creditsResult, listingsResult] = await Promise.allSettled([api.getPlatformCredits(), api.getMyListings()]);
+      if (creditsResult.status === 'rejected') throw creditsResult.reason;
+      const credits = creditsResult.value;
+      const ownedListings = listingsResult.status === 'fulfilled' ? listingsResult.value : { listings: [] };
+      if (listingsResult.status === 'rejected') setError('Your listings could not be loaded, so promotions are unavailable right now. Refresh to try again.');
       setData(credits);
       setListings((ownedListings.listings || []).filter((listing) => listing.isVerified));
       setSelection((current) => current || (ownedListings.listings || []).find((listing) => listing.isVerified)?._id || '');

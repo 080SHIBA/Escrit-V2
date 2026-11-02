@@ -1,18 +1,16 @@
 import { Navigate } from 'react-router-dom';
 import { useAuthContext } from '../lib/AuthContext.jsx';
+import SessionCheckSkeleton from './SessionCheckSkeleton.jsx';
 
+// WHAT: Guards pages that need a signed-in user.
+// WHY wait on `restoring`: a user can be signed in while their status is still
+// 'anon' (a cookie exists but no local hint). Redirecting immediately would
+// wrongly send them to the sign-in page, so we hold on the skeleton until the
+// first restore attempt has settled.
 export default function RequireAuth({ children }) {
-  const { status } = useAuthContext();
+  const { status, restoring } = useAuthContext();
 
-  if (status === 'checking') {
-    return (
-      <div className="space-y-3" aria-busy="true" aria-label="Checking your session">
-        <div className="skeleton h-8 w-48" />
-        <div className="skeleton h-24 w-full" />
-        <div className="skeleton h-24 w-full" />
-      </div>
-    );
-  }
+  if (status === 'checking' || (status === 'anon' && restoring)) return <SessionCheckSkeleton />;
   if (status === 'anon') return <Navigate to="/sign-in" replace />;
   return children;
 }
