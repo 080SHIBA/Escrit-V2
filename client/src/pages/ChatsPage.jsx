@@ -34,7 +34,7 @@ export default function ChatsPage() {
     ? role
     : getConversationRole(offer, userId) || role;
 
-  usePageTitle('Service offers & chat');
+  usePageTitle('Messages & offers');
 
   useEffect(() => {
     if (!selectedId && activeConversations.conversations.length > 0) {
@@ -73,8 +73,22 @@ export default function ChatsPage() {
     if (openedTarget.current === key) return;
     openedTarget.current = key;
     setRole('buyer');
+    if (targetType === 'product') {
+      openConversation({
+        listingType: 'product',
+        productId: targetListingId,
+        sellerId: targetSellerId,
+        title: searchParams.get('listingTitle') || 'Product listing',
+      })
+        .then((opened) => {
+          setSelectedId(String(opened._id));
+          setMobilePane('chat');
+        })
+        .catch((error) => setActionError(friendlyChatError(error, 'We couldn’t open this product conversation.')));
+      return;
+    }
     if (targetType !== 'service') {
-      setActionError('Product chat is not available yet. Service conversations are ready to use.');
+      setActionError('This conversation type is not supported.');
       return;
     }
     openConversation({
@@ -88,7 +102,7 @@ export default function ChatsPage() {
         setMobilePane('chat');
       })
       .catch((error) => setActionError(friendlyChatError(error, 'We couldn’t open this service conversation.')));
-  }, [openConversation, targetListingId, targetSellerId, targetType]);
+  }, [openConversation, searchParams, targetListingId, targetSellerId, targetType]);
 
   useEffect(() => {
     if (chat.offer?._id) activeConversations.replaceConversation(chat.offer);
@@ -232,10 +246,10 @@ export default function ChatsPage() {
     <main className="chats-page mx-auto max-w-[1600px] px-3 pb-8 pt-5 sm:px-5 sm:pt-7">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Your service deals</p>
-          <h1 className="mt-1 font-display text-2xl sm:text-3xl">Service offers &amp; chat</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Marketplace conversations</p>
+          <h1 className="mt-1 font-display text-2xl sm:text-3xl">Messages &amp; offers</h1>
         </div>
-        <Link to="/marketplace/services" className="inline-flex min-h-11 items-center whitespace-nowrap rounded-lg border border-line px-3 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Browse services</Link>
+        <Link to="/marketplace" className="inline-flex min-h-11 items-center whitespace-nowrap rounded-lg border border-line px-3 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Browse marketplace</Link>
       </header>
 
       <div role="tablist" aria-label="Buying or selling conversations" className="mb-4 inline-flex min-h-12 items-center gap-1 rounded-xl border border-line bg-paper p-1">

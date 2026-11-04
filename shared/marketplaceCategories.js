@@ -17,6 +17,7 @@ export const MARKETPLACE_CATEGORIES_BY_TYPE = {
   ],
   service: [
     'Technology & IT Services',
+    'Digital Marketing',
     'Consumer or Personal Services',
     'Retail & E-commerce Services',
     'Healthcare & Wellness Services',

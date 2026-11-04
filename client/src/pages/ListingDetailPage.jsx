@@ -214,6 +214,20 @@ export default function ListingDetailPage() {
   }
 
   function openMessagePanel() {
+    if (listing.type === 'product') {
+      if (status !== 'authed') {
+        navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
+      const params = new URLSearchParams({
+        listingId: listing.id,
+        sellerId: listing.sellerId,
+        listingType: 'product',
+        listingTitle: listing.title,
+      });
+      navigate(`/account/chats?${params}`);
+      return;
+    }
     const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
     document.getElementById('seller-message')?.scrollIntoView({ behavior, block: 'start' });
     document.querySelector('#seller-message input, #seller-message textarea')?.focus({ preventScroll: true });

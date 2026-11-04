@@ -13,6 +13,7 @@ import { ProductCategory } from '../models/ListingCategory.js';
 import { ShopifyConnection } from '../models/ShopifyConnection.js';
 import { ShopifyOAuthState } from '../models/ShopifyOAuthState.js';
 import { User } from '../models/User.js';
+import { notifyListingSubmitted } from '../services/notificationEvents.js';
 import {
   exchangeAuthorizationCode,
   hashOAuthState,
@@ -298,6 +299,7 @@ shopifyRouter.post('/drafts/:id/submit', requireAuth, validate(submitDraftSchema
     if (createdLink && link) await Link.deleteOne({ _id: link._id });
     throw error;
   }
+  await notifyListingSubmitted({ io: req.app.get('io'), seller, listing: product, listingType: 'product' });
   res.status(202).json({ listing: product, message: 'Submitted for Escrit review. It is not visible to buyers until approved.' });
 }));
 

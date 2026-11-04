@@ -114,3 +114,25 @@ export async function notifyListingSubmitted({ io, seller, listing, listingType 
     console.error(`[notifications] Could not notify about listing ${listing._id}:`, error.message);
   }
 }
+
+export async function notifyListingApproved({ io, seller, listing, listingType }) {
+  try {
+    const listingHref = `/listing/${encodeURIComponent(listing._id)}`;
+    await notifyUser({
+      io,
+      recipientId: seller._id,
+      type: 'listing_approved',
+      title: `${listingType[0].toUpperCase()}${listingType.slice(1)} listing approved`,
+      message: `“${listing.title}” has been approved and is now visible in the marketplace.`,
+      href: listingHref,
+      dedupeKey: `listing-approved:${listing._id}`,
+      email: {
+        to: seller.email,
+        subject: `Your ${listingType} listing was approved — Escrit`,
+        href: clientUrl(listingHref),
+      },
+    });
+  } catch (error) {
+    console.error(`[notifications] Could not notify about approved listing ${listing._id}:`, error.message);
+  }
+}

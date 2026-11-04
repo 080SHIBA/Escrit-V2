@@ -2,6 +2,8 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import Joi from 'joi';
 import { User } from '../models/User.js';
+import { Referral } from '../models/Referral.js';
+import { ensureUserReferralCode } from '../utils/referralCode.js';
 import { validate } from '../middleware/validate.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -30,6 +32,30 @@ import {
   verifyVerificationToken,
 } from '../utils/otp.js';
 import { normalizedEmailSchema } from '../utils/authValidation.js';
+
+async function linkReferral(newUser, referralCode) {
+  try {
+    await ensureUserReferralCode(newUser);
+    if (!referralCode) return;
+    const cleanCode = String(referralCode).trim().toUpperCase();
+    const referrer = await User.findOne({ referralCode: cleanCode });
+    if (!referrer || referrer._id.toString() === newUser._id.toString()) return;
+
+    newUser.referredBy = referrer._id;
+    await newUser.save();
+
+    await Referral.create({
+      referrerId: referrer._id,
+      referredUserId: newUser._id,
+      referredName: newUser.displayName || newUser.fullName || newUser.businessName || '',
+      referredEmail: newUser.email,
+      status: 'registered',
+      rewardCredits: 25,
+    });
+  } catch (err) {
+    console.error('[referral] failed to link referral', err);
+  }
+}
 
 export const authRouter = Router();
 
@@ -189,6 +215,7 @@ authRouter.post('/register', authLimiter, validate(registerSchema), asyncHandler
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await User.create({ email, passwordHash, businessName, fullName, nin });
+  await linkReferral(user, req.body.referralCode);
 
   // A failed email must not block sign-up: the app shows a "verify your
   // email" banner and the seller can request a new code.

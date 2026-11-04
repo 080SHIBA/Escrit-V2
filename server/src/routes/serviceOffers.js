@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { Service } from '../models/Service.js';
+import { Product } from '../models/Product.js';
 import { ServiceOrder } from '../models/ServiceOrder.js';
 import { ServiceOffer } from '../models/ServiceOffer.js';
 import { ConversationMessage } from '../models/ConversationMessage.js';
@@ -66,7 +67,9 @@ async function notifyRecipient(req, offer, recipientId, message) {
     const [recipient, sender, service] = await Promise.all([
       User.findById(recipientId).select('email'),
       User.findById(message.senderId).select('businessName displayName'),
-      Service.findById(offer.serviceId).select('title'),
+      offer.listingType === 'product'
+        ? Product.findById(offer.productId).select('title')
+        : Service.findById(offer.serviceId).select('title'),
     ]);
     if (!recipient?.email) return;
     const messageText = message.type === 'offer'
@@ -128,6 +131,7 @@ serviceOffersRouter.get('/', asyncHandler(async (req, res) => {
   const offers = await ServiceOffer.find(participantQuery)
     .sort({ updatedAt: -1 })
     .populate('serviceId', 'title images basePrice startingPrice serviceModel paymentOptions')
+    .populate('productId', 'title images price')
     .populate('buyerId', 'businessName displayName profilePictureUrl kycStatus')
     .populate('sellerId', 'businessName displayName profilePictureUrl kycStatus');
   const offerIds = offers.map((offer) => offer._id);
@@ -207,10 +211,74 @@ serviceOffersRouter.post('/', validate(createSchema), asyncHandler(async (req, r
   res.status(201).json({ offer });
 }));
 
+const productConversationSchema = Joi.object({
+  productId: Joi.string().hex().length(24).required(),
+});
+
+serviceOffersRouter.post('/product', validate(productConversationSchema), asyncHandler(async (req, res) => {
+  const product = await Product.findOne({
+    _id: req.body.productId,
+    isActive: true,
+    isVerified: true,
+    categoryReviewStatus: 'approved',
+  });
+  if (!product) throw new AppError(404, 'Product is no longer available');
+  if (String(product.seller) === String(req.sellerId)) throw new AppError(409, 'You cannot message yourself about your own product');
+
+  const conversationKey = `product:${product._id}:${req.sellerId}`;
+  const existing = await ServiceOffer.findOne({ conversationKey });
+  if (existing) {
+    await existing.populate([
+      { path: 'productId', select: 'title images price' },
+      { path: 'buyerId', select: 'businessName displayName profilePictureUrl kycStatus' },
+      { path: 'sellerId', select: 'businessName displayName profilePictureUrl kycStatus' },
+    ]);
+    return res.json({ offer: existing, created: false });
+  }
+
+  let offer;
+  try {
+    offer = await ServiceOffer.create({
+      listingType: 'product',
+      productId: product._id,
+      buyerId: req.sellerId,
+      sellerId: product.seller,
+      conversationKey,
+      fulfilmentCriteria: `I’d like to discuss “${product.title}” with you.`,
+      projectRequest: { description: `I’d like to discuss “${product.title}” with you.` },
+      status: 'REQUESTED',
+    });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    offer = await ServiceOffer.findOne({ conversationKey });
+    if (!offer) throw error;
+    return res.json({ offer, created: false });
+  }
+
+  const recipientOnline = Boolean(req.app.get('io')?.sockets.adapter.rooms.get(`user:${product.seller}`)?.size);
+  const message = await ConversationMessage.create({
+    offerId: offer._id,
+    senderId: req.sellerId,
+    recipientId: product.seller,
+    type: 'text',
+    body: `I’d like to discuss “${product.title}” with you.`,
+    deliveredAt: recipientOnline ? new Date() : null,
+  });
+  emitToOffer(req, offer, 'conversation:message', message.toObject());
+  await notifyRecipient(req, offer, product.seller, message);
+  await offer.populate([
+    { path: 'productId', select: 'title images price' },
+    { path: 'buyerId', select: 'businessName displayName profilePictureUrl kycStatus' },
+    { path: 'sellerId', select: 'businessName displayName profilePictureUrl kycStatus' },
+  ]);
+  res.status(201).json({ offer });
+}));
+
 serviceOffersRouter.get('/:id/messages', asyncHandler(async (req, res) => {
   const offer = await loadOffer(req.params.id, req.sellerId);
   await offer.populate([
     { path: 'serviceId', select: 'title images basePrice startingPrice serviceModel paymentOptions' },
+    { path: 'productId', select: 'title images price' },
     { path: 'buyerId', select: 'businessName displayName profilePictureUrl kycStatus' },
     { path: 'sellerId', select: 'businessName displayName profilePictureUrl kycStatus' },
   ]);

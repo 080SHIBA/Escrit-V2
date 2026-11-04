@@ -3,13 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { api } from '../lib/api.js';
 
-export default function ProductOfferPanel({ product }) {
+export default function ProductOfferPanel({ product, isOwner: isOwnerProp }) {
   const { status, seller } = useAuthContext();
   const navigate = useNavigate();
   const [price, setPrice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const isOwner = String(seller?.id || seller?._id) === String(product.seller?._id);
+  const productId = product.id || product._id;
+  const ownerId = product.sellerId || product.seller?.id || product.seller?._id;
+  const isOwner = isOwnerProp ?? String(seller?.id || seller?._id) === String(ownerId);
 
   if (!product.negotiable) return null;
   if (status !== 'authed') return <Link to={`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`} className="mt-3 block text-center text-sm underline underline-offset-4">Sign in to make an offer</Link>;
@@ -20,7 +22,7 @@ export default function ProductOfferPanel({ product }) {
     setBusy(true);
     setError('');
     try {
-      await api.createProductOffer({ productId: product._id, priceNaira: Number(price) });
+      await api.createProductOffer({ productId, priceNaira: Number(price) });
       navigate('/account/price-offers');
     } catch (err) {
       setError(err.message || 'Unable to send your price offer.');

@@ -121,7 +121,10 @@ const userSchema = new mongoose.Schema(
       }],
       default: [],
     },
+    promoCredits: { type: Number, min: 0, default: 0 },
     promoCreditsKobo: { type: Number, min: 0, default: 0 },
+    referralCode: { type: String, default: null, trim: true },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     marketingEmailOptIn: { type: Boolean, default: false },
 
     // Sparse so many email/password accounts can share a null googleId.
@@ -172,6 +175,14 @@ userSchema.index(
     unique: true,
     partialFilterExpression: { emailVerificationTokenHash: { $type: 'string' } },
     name: 'email_verification_token_hash_unique',
+  },
+);
+userSchema.index(
+  { referralCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { referralCode: { $type: 'string' } },
+    name: 'referral_code_unique',
   },
 );
 

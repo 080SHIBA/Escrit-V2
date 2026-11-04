@@ -6,6 +6,7 @@ import { api } from '../../lib/api.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import ServiceDealPanel from '../ServiceDealPanel.jsx';
 import PaymentOptionPicker from './PaymentOptionPicker.jsx';
+import ProductOfferPanel from '../ProductOfferPanel.jsx';
 
 function productFulfilment(listing) {
   const offered = listing.deliveryOptions?.map((option) => option.method) || [];
@@ -348,6 +349,7 @@ export default function BuyBox({
           </button>
         </div>
       </div>
+      {listing.type === 'product' && listing.negotiable && <ProductOfferPanel product={listing} isOwner={isOwn} />}
 
       <ul className="mt-5 space-y-2 border-t border-line pt-4 text-xs leading-5 text-ink/65">
         <li className="flex gap-2"><BadgeCheck size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-released" />Seller verification status shown clearly</li>
@@ -367,7 +369,7 @@ export default function BuyBox({
         <Link to={`/marketplace/seller/${encodeURIComponent(listing.sellerId || listing.seller?.id || '')}`} aria-label={`View ${listing.sellerName}'s storefront`} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"><Store size={17} aria-hidden="true" /></Link>
       </div>
       <Link to={`/marketplace/seller/${encodeURIComponent(listing.sellerId || listing.seller?.id || '')}`} className="mt-3 inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4">View storefront</Link>
-      {listing.type === 'service' && (
+      {(listing.type === 'service' || (listing.type === 'product' && !isOwn)) && (
         <button type="button" onClick={onMessageSeller} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line px-4 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
           <MessageCircle size={16} aria-hidden="true" />Message seller
         </button>

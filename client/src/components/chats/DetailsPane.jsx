@@ -4,7 +4,7 @@ import { getConversationStage, paymentOptionCopy } from '../../lib/serviceChat.j
 
 export default function DetailsPane({ offer, order, onReport, onBack }) {
   const [reason, setReason] = useState('');
-  const listing = offer?.serviceId || {};
+  const listing = offer?.productId || offer?.serviceId || {};
   const paymentChoiceSaved = order?.termsSnapshot?.includes('Payment method:');
   const paymentMode = paymentChoiceSaved ? order.paymentMode : null;
   const stage = getConversationStage(offer, order);
@@ -20,8 +20,8 @@ export default function DetailsPane({ offer, order, onReport, onBack }) {
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/45">Listing</h3>
           <p className="mt-2 font-semibold leading-5">{listing.title || 'Service listing'}</p>
-          <p className="mt-1 text-sm text-ink/55">{listing.serviceModel?.replaceAll('_', ' ') || 'Service'}</p>
-          {listing.basePrice > 0 && <p className="mt-2 text-sm font-medium">From ₦{Number(listing.basePrice).toLocaleString('en-NG')}</p>}
+          <p className="mt-1 text-sm text-ink/55">{offer?.listingType === 'product' ? 'Product' : listing.serviceModel?.replaceAll('_', ' ') || 'Service'}</p>
+          {(listing.basePrice > 0 || listing.price > 0) && <p className="mt-2 text-sm font-medium">{offer?.listingType === 'product' ? '₦' : 'From ₦'}{Number(listing.basePrice || listing.price).toLocaleString('en-NG')}</p>}
           {listingId && <Link to={`/listing/${encodeURIComponent(listingId)}`} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">View listing</Link>}
         </section>
         <section className="border-t border-line pt-4">
@@ -34,7 +34,7 @@ export default function DetailsPane({ offer, order, onReport, onBack }) {
           <p className="mt-2 text-sm font-medium">{paymentMode === 'direct' ? 'Without escrow' : paymentMode === 'escrow' ? 'Escrit escrow' : 'Choose before checkout'}</p>
           {paymentMode && <p className="mt-2 text-xs leading-5 text-ink/55">{paymentOptionCopy(paymentMode)}</p>}
         </section>
-        <p className="rounded-lg bg-paper-2 p-3 text-xs leading-5 text-ink/60">Built-in scheduling comes later. Agree timing in chat.</p>
+        {offer?.listingType !== 'product' && <p className="rounded-lg bg-paper-2 p-3 text-xs leading-5 text-ink/60">Built-in scheduling comes later. Agree timing in chat.</p>}
         <form
           className="border-t border-line pt-4"
           onSubmit={async (event) => {

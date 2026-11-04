@@ -46,7 +46,9 @@ export function useConversations(role) {
   );
 
   const openConversation = useCallback(async (payload) => {
-    const { offer } = await api.openServiceConversation(payload);
+    const { offer } = payload.listingType === 'product'
+      ? await api.openProductConversation(payload)
+      : await api.openServiceConversation(payload);
     setConversations((current) => [offer, ...current.filter((entry) => entry._id !== offer._id)]);
     setError('');
     return offer;

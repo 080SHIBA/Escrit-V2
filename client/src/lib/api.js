@@ -361,6 +361,9 @@ export const api = {
   openServiceConversation: (payload) => serviceOrderMocksEnabled
     ? serviceOrderMockHandlers.openConversation(payload)
     : request('/conversations', { method: 'POST', body: payload, auth: true }),
+  openProductConversation: (payload) => serviceOrderMocksEnabled
+    ? serviceOrderMockHandlers.openProductConversation(payload)
+    : request('/conversations/product', { method: 'POST', body: { productId: payload.productId }, auth: true }),
   getOfferMessages: (id, before = '') => serviceOrderMocksEnabled
     ? serviceOrderMockHandlers.getOfferMessages(id, before)
     : request(`/conversations/${encodeURIComponent(id)}/messages?limit=30${before ? `&before=${encodeURIComponent(before)}` : ''}`, { auth: true }),
@@ -371,6 +374,7 @@ export const api = {
   getNotificationPreferences: () => request('/notifications/preferences', { auth: true }),
   updateNotificationPreferences: (preferences) => request('/notifications/preferences', { method: 'PATCH', body: preferences, auth: true }),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', auth: true }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'PATCH', auth: true }),
   counterServiceOffer: (id, payload, role = 'buyer') => serviceOrderMocksEnabled
     ? serviceOrderMockHandlers.counterOffer(id, { ...payload, actorRole: role })
     : request(`/offers/${encodeURIComponent(id)}/counter`, { method: 'POST', body: payload, auth: true }),
@@ -443,6 +447,11 @@ export const api = {
   getSellerAnalytics: () => request('/marketplace/me/analytics', { auth: true }),
   getPlatformCredits: () => request('/marketplace/me/credits', { auth: true }),
   spendPlatformCredits: (payload) => request('/marketplace/me/credits/spend', { method: 'POST', body: payload, auth: true }),
+  buyPlatformCredits: (payload) => request('/marketplace/me/credits/buy', { method: 'POST', body: payload, auth: true }),
+  verifyCreditPurchase: (reference) => request('/marketplace/me/credits/verify', { method: 'POST', body: { reference }, auth: true }),
+  promoteListingWithCredits: (payload) => request('/marketplace/me/credits/promote', { method: 'POST', body: payload, auth: true }),
+  getPromotionCampaigns: () => request('/marketplace/me/credits/campaigns', { auth: true }),
+  getReferralSummary: () => request('/marketplace/me/credits/referral', { auth: true }),
   getMyListings: () => listingMocksEnabled ? listingMockHandlers.getMyListings() : request('/marketplace/me/listings', { auth: true }),
   setMyListingActive: (type, id, active) => listingMocksEnabled
     ? listingMockHandlers.setActive(type, id, active)

@@ -13,7 +13,9 @@ const offerEventSchema = new mongoose.Schema(
 
 const serviceOfferSchema = new mongoose.Schema(
   {
-    serviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', required: true, index: true },
+    listingType: { type: String, enum: ['service', 'product'], default: 'service', index: true },
+    serviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', default: null, index: true },
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null, index: true },
     buyerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     conversationKey: { type: String, default: null },

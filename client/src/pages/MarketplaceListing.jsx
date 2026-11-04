@@ -4,13 +4,15 @@ import { api } from '../lib/api.js';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { usePageTitle } from '../lib/usePageTitle.js';
 import { CartIcon, ChevronRightIcon } from '../components/icons.jsx';
+import { MessageCircle } from 'lucide-react';
 import ReviewSection from '../components/ReviewSection.jsx';
 import ProductOfferPanel from '../components/ProductOfferPanel.jsx';
+import ListingImageViewer from '../components/ListingImageViewer.jsx';
 
 export default function MarketplaceListing() {
   const { type, id } = useParams();
   const navigate = useNavigate();
-  const { status } = useAuthContext();
+  const { status, seller: currentSeller } = useAuthContext();
   const [item, setItem] = useState(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -18,6 +20,7 @@ export default function MarketplaceListing() {
   const [directBuying, setDirectBuying] = useState(false);
   const [appointmentAt, setAppointmentAt] = useState('');
   const [kycRequired, setKycRequired] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(null);
   usePageTitle(item?.title || 'Listing');
 
   useEffect(() => {
@@ -70,13 +73,19 @@ export default function MarketplaceListing() {
 
   const price = item.buyerPriceKobo != null ? item.buyerPriceKobo / 100 : null;
   const paymentOptions = item.paymentOptions || { escrow: false, direct: true };
+  const images = item.images?.length ? item.images : ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=1200&q=80'];
+  const currentSellerId = String(currentSeller?.id || currentSeller?._id || '');
+  const listingSellerId = String(item.seller?._id || '');
+  const isOwnListing = Boolean(currentSellerId && listingSellerId && currentSellerId === listingSellerId);
   return (
     <article className="mx-auto max-w-6xl">
       <Link to={`/marketplace/${type === 'product' ? 'products' : `${type}s`}`} className="inline-flex items-center gap-1 text-sm text-ink/55 hover:text-ink"><ChevronRightIcon className="rotate-180" width={16} height={16} />Back to {type}s</Link>
       <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
         <div>
-          <img src={item.images?.[0] || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=1200&q=80'} alt={item.title} className="aspect-[4/3] w-full rounded-lg object-cover" />
-          {item.images?.length > 1 && <div className="mt-3 grid grid-cols-4 gap-3">{item.images.slice(1).map((image) => <img key={image} src={image} alt="" className="aspect-square w-full rounded-md object-cover" />)}</div>}
+          <button type="button" onClick={() => setViewerIndex(0)} aria-label="Expand listing image" className="block w-full cursor-zoom-in">
+            <img src={images[0]} alt={item.title} className="aspect-[4/3] w-full rounded-lg object-cover" />
+          </button>
+          {item.images?.length > 1 && <div className="mt-3 grid grid-cols-4 gap-3">{item.images.slice(1).map((image, index) => <button key={image} type="button" onClick={() => setViewerIndex(index + 1)} aria-label={`Expand listing image ${index + 2}`} className="cursor-zoom-in"><img src={image} alt="" className="aspect-square w-full rounded-md object-cover" /></button>)}</div>}
           <section className="mt-8 border-t border-line pt-6">
             <p className="text-xs uppercase tracking-wider text-ink/50">{item.category || 'General'} · {type}</p>
             <h1 className="mt-2 font-display text-3xl">{item.title}</h1>
@@ -110,6 +119,25 @@ export default function MarketplaceListing() {
           )}
           {kycRequired && <Link to={`/settings?next=${encodeURIComponent(window.location.pathname)}`} className="mt-3 inline-block text-sm underline underline-offset-4">Complete identity details to continue</Link>}
           {type === 'product' && <ProductOfferPanel product={item} />}
+          {type === 'product' && !isOwnListing && <button
+            type="button"
+            onClick={() => {
+              if (status !== 'authed') {
+                navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
+                return;
+              }
+              const params = new URLSearchParams({
+                listingId: String(item._id),
+                sellerId: String(item.seller?._id || ''),
+                listingType: 'product',
+                listingTitle: item.title,
+              });
+              navigate(`/account/chats?${params}`);
+            }}
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line px-4 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+          >
+            <MessageCircle size={16} aria-hidden="true" />Message seller
+          </button>}
           {message && <p role="status" className="mt-3 text-sm text-released">{message} <Link to="/cart" className="underline">View cart</Link></p>}
           {error && <p role="alert" className="mt-3 text-sm text-dispute">{error}</p>}
           <div className="mt-6 border-t border-line pt-5">
@@ -122,6 +150,7 @@ export default function MarketplaceListing() {
         </aside>
       </div>
       <ReviewSection listingType={type} listingId={id} authStatus={status} />
+      {viewerIndex !== null && <ListingImageViewer images={images} initialIndex={viewerIndex} title={item.title} onClose={() => setViewerIndex(null)} />}
     </article>
   );
 }

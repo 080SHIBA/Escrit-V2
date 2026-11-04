@@ -66,6 +66,15 @@ notificationsRouter.patch('/preferences', validate(Joi.object({
   res.json({ marketingEmailOptIn: Boolean(user.marketingEmailOptIn) });
 }));
 
+notificationsRouter.patch('/read-all', asyncHandler(async (req, res) => {
+  const readAt = new Date();
+  await Promise.all([
+    Notification.updateMany({ recipientId: req.sellerId, readAt: null }, { readAt }),
+    ConversationMessage.updateMany({ recipientId: req.sellerId, readAt: null }, { readAt }),
+  ]);
+  res.json({ ok: true, readAt, unreadCount: 0 });
+}));
+
 notificationsRouter.patch('/:id/read', asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, recipientId: req.sellerId, readAt: null },

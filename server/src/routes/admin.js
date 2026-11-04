@@ -21,6 +21,7 @@ import { env } from '../config/env.js';
 import { KycSubmission } from '../models/KycSubmission.js';
 import { privateKycAssetUrl } from '../services/privateKycStorage.js';
 import { notifyUser } from '../services/notifications.js';
+import { notifyListingApproved } from '../services/notificationEvents.js';
 import { sendPromotionEmail } from '../services/mailer.js';
 
 export const adminRouter = Router();
@@ -258,6 +259,17 @@ adminRouter.post('/listings/:type/:id/review', validate(listingReviewSchema), as
     listing.isVerified = false;
     await listing.save();
     throw new AppError(409, 'Resolve the pending category request before approving this listing');
+  }
+  if (req.body.approved) {
+    const seller = await User.findById(listing.seller).select('email');
+    if (seller) {
+      await notifyListingApproved({
+        io: req.app.get('io'),
+        seller,
+        listing,
+        listingType: req.params.type,
+      });
+    }
   }
   res.json({ listing });
 }));

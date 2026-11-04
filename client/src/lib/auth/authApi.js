@@ -54,8 +54,8 @@ export async function signUp(payload) {
   return request('/api/auth/sign-up', normalizedPayload);
 }
 
-export function signInWithGoogle(idToken, returnTo = '') {
-  return request('/api/auth/google', { idToken, ...(returnTo ? { returnTo } : {}) });
+export function signInWithGoogle(idToken, returnTo = '', referralCode = '') {
+  return request('/api/auth/google', { idToken, ...(returnTo ? { returnTo } : {}), ...(referralCode ? { referralCode } : {}) });
 }
 
 export function resendVerification(email) {

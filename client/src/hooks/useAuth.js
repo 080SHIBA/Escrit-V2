@@ -41,8 +41,8 @@ export function useAuth() {
       if (result.accessToken) await login(result.accessToken, result.seller || null);
       return result;
     }),
-    google: (idToken, returnTo = '') => run(async () => {
-      const result = await signInWithGoogle(idToken, returnTo);
+    google: (idToken, returnTo = '', referralCode = '') => run(async () => {
+      const result = await signInWithGoogle(idToken, returnTo, referralCode);
       if (result.accessToken) await login(result.accessToken, result.seller || result.user || null);
       return result;
     }),

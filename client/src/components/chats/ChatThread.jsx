@@ -52,7 +52,7 @@ export default function ChatThread({
   const newestMessageId = messages.at(-1)?._id;
   const other = otherParticipant(offer, role);
   const name = participantName(other);
-  const serviceTitle = offer?.serviceId?.title || 'Service conversation';
+  const listingTitle = offer?.productId?.title || offer?.serviceId?.title || 'Marketplace conversation';
   const latestOfferMessage = [...messages].reverse().find((message) => message.type === 'offer');
   const stage = getConversationStage(offer, order);
   const isPaid = order?.paymentStatus === 'paid';
@@ -83,7 +83,7 @@ export default function ChatThread({
               : <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent/10 font-semibold text-accent">{name.charAt(0).toUpperCase()}</span>}
             <div className="min-w-0 flex-1">
               <h2 ref={headingRef} tabIndex="-1" className="truncate font-semibold focus:outline-none">{name}</h2>
-              <p className="mt-0.5 truncate text-xs text-ink/55">{other?.kycStatus === 'verified' ? 'Verified' : 'Verification pending'} <span aria-hidden="true">·</span> {serviceTitle}</p>
+              <p className="mt-0.5 truncate text-xs text-ink/55">{other?.kycStatus === 'verified' ? 'Verified' : 'Verification pending'} <span aria-hidden="true">·</span> {listingTitle}</p>
             </div>
             <span className={`hidden shrink-0 items-center gap-1.5 text-xs sm:inline-flex ${online ? 'text-released' : 'text-ink/45'}`}><span className={`h-2 w-2 rounded-full ${online ? 'bg-released' : 'bg-line-strong'}`} />{online ? 'Online' : 'Offline'}</span>
             <button type="button" onClick={onShowDetails} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-line px-3 text-sm font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus lg:hidden"><MoreHorizontal size={16} aria-hidden="true" />Details</button>
@@ -153,7 +153,7 @@ export default function ChatThread({
                 />}
               </>
             )}
-            {role === 'seller' && ['REQUESTED', 'CHANGES_REQUESTED'].includes(offer.status) && (
+            {offer.listingType !== 'product' && role === 'seller' && ['REQUESTED', 'CHANGES_REQUESTED'].includes(offer.status) && (
               offerForm ? (
                 <form
                   className="rounded-xl border border-line bg-paper-2 p-3"
@@ -180,8 +180,8 @@ export default function ChatThread({
             )}
             {role === 'buyer' && order?.paymentStatus === 'paid' && order?.status === 'in_progress' && <p className="rounded-lg bg-paper-2 px-3 py-2 text-sm text-ink/65">Work in progress. You’ll be able to review delivery here.</p>}
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setDraft('Suggest a time'); }} className="min-h-11 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Suggest a time</button>
-              <button type="button" onClick={() => { setDraft('Share requirements'); }} className="min-h-11 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Share requirements</button>
+              <button type="button" onClick={() => { setDraft(offer.listingType === 'product' ? 'Is this item still available?' : 'Suggest a time'); }} className="min-h-11 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">{offer.listingType === 'product' ? 'Ask about availability' : 'Suggest a time'}</button>
+              <button type="button" onClick={() => { setDraft(offer.listingType === 'product' ? 'Could you share more details about this item?' : 'Share requirements'); }} className="min-h-11 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">{offer.listingType === 'product' ? 'Ask for details' : 'Share requirements'}</button>
             </div>
             <form onSubmit={submitMessage} className="flex items-end gap-2">
               <label className="sr-only" htmlFor="chat-message-input">Message</label>
@@ -213,7 +213,7 @@ export default function ChatThread({
         </>
       ) : (
         <div className="grid flex-1 place-items-center p-8 text-center">
-          <div><h2 className="font-display text-xl">Pick a conversation</h2><p className="mt-2 text-sm text-ink/55">Your service offers and messages will show here.</p></div>
+          <div><h2 className="font-display text-xl">Pick a conversation</h2><p className="mt-2 text-sm text-ink/55">Your marketplace conversations will show here.</p></div>
         </div>
       )}
     </section>

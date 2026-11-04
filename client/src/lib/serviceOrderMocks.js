@@ -122,6 +122,40 @@ export const serviceOrderMockHandlers = {
       termsAccepted: true,
     });
   },
+  async openProductConversation(payload) {
+    await delay();
+    const existing = [...offers.values()].find((offer) => (
+      offer.listingType === 'product'
+      && String(offer.productId?._id) === String(payload.productId)
+      && String(offer.buyerId?._id) === 'mock-buyer'
+    ));
+    if (existing) return { offer: { ...existing }, created: false };
+
+    const now = new Date().toISOString();
+    const offer = {
+      _id: `mock-product-conversation-${offers.size + 1}`,
+      listingType: 'product',
+      productId: { _id: payload.productId, title: payload.title || 'Product listing', price: 0 },
+      buyerId: { _id: 'mock-buyer', displayName: 'Local buyer' },
+      sellerId: { _id: payload.sellerId || 'mock-seller', displayName: payload.sellerName || 'Local seller', kycStatus: 'pending' },
+      status: 'REQUESTED',
+      fulfilmentCriteria: `I’d like to discuss “${payload.title || 'this product'}” with you.`,
+      projectRequest: { description: `I’d like to discuss “${payload.title || 'this product'}” with you.` },
+      createdAt: now,
+      updatedAt: now,
+    };
+    const message = {
+      _id: `mock-product-message-${Date.now()}-${offers.size}`,
+      offerId: offer._id,
+      senderId: offer.buyerId._id,
+      type: 'text',
+      body: offer.fulfilmentCriteria,
+      createdAt: now,
+    };
+    offers.set(offer._id, offer);
+    offerMessages.set(offer._id, [message]);
+    return { offer: { ...offer }, created: true };
+  },
   async sendQuote(id, payload) {
     await delay();
     const offer = offers.get(id);

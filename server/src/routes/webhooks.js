@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getFlutterwaveCredentials, getPaystackCredentials } from '../services/paymentMode.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { CheckoutAttempt } from '../models/CheckoutAttempt.js';
+import { reconcileCreditPurchase } from '../services/promotionCredits.js';
 
 export const webhooksRouter = Router();
 
@@ -15,6 +16,13 @@ async function reconcileEvent(provider, event, io) {
   const reference = provider === 'flutterwave' ? event.data?.tx_ref : event.data?.reference;
   const providerId = event.data?.id;
   if (!reference || !providerId) return;
+
+  if (typeof reference === 'string' && reference.startsWith('promo_')) {
+    await reconcileCreditPurchase({ reference, providerTransactionId: String(providerId) }).catch((err) =>
+      console.error('[webhook] failed to reconcile promo credit purchase', err)
+    );
+    return;
+  }
   const tx = await Transaction.findOne({ paymentProvider: provider, paymentReference: reference });
   if (tx && tx.status === 'CREATED') {
     tx.paymentProviderTransactionId = provider === 'flutterwave' ? String(providerId) : String(reference);

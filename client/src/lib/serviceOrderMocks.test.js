@@ -213,6 +213,29 @@ test('conversation creation and optimistic messages are idempotent', async () =>
   assert.equal((await serviceOrderMockHandlers.getOfferMessages(first.offer._id)).messages.length, initialCount + 1);
 });
 
+test('product detail opens a reusable buyer-seller chat', async () => {
+  const payload = {
+    listingType: 'product',
+    productId: `mock-product-${Date.now()}`,
+    sellerId: 'mock-product-seller',
+    title: 'Handmade desk lamp',
+  };
+  const first = await serviceOrderMockHandlers.openProductConversation(payload);
+  const second = await serviceOrderMockHandlers.openProductConversation(payload);
+  assert.equal(first.offer.listingType, 'product');
+  assert.equal(first.offer.productId.title, payload.title);
+  assert.equal(second.created, false);
+  assert.equal(second.offer._id, first.offer._id);
+  const { message } = await serviceOrderMockHandlers.sendOfferMessage(
+    first.offer._id,
+    'Is this available in another colour?',
+    `product-chat-${Date.now()}`,
+    'buyer',
+  );
+  assert.equal(message.type, 'text');
+  assert.equal((await serviceOrderMockHandlers.getOfferMessages(first.offer._id)).messages.at(-1)._id, message._id);
+});
+
 test('mock provider failure does not mark an order paid', async () => {
   const { offer } = await serviceOrderMockHandlers.createOffer({
     serviceId: 'mock-listing-payment-failure',

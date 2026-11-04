@@ -25,7 +25,7 @@ export default function ConversationList({
     const query = search.trim().toLowerCase();
     return !query || [
       displayName(other),
-      conversation.serviceId?.title,
+      conversation.productId?.title || conversation.serviceId?.title,
       lastMessageText(conversation),
     ].some((value) => String(value || '').toLowerCase().includes(query));
   });
@@ -65,7 +65,7 @@ export default function ConversationList({
                     <span className="truncate text-sm font-semibold">{name}</span>
                     <span className="shrink-0 rounded-full bg-paper-3 px-2 py-0.5 text-[11px] text-ink/65">{getConversationStage(conversation, conversation.order)}</span>
                   </span>
-                  <span className="mt-1 block truncate text-xs text-ink/60">{conversation.serviceId?.title || 'Service conversation'}</span>
+                  <span className="mt-1 block truncate text-xs text-ink/60">{conversation.productId?.title || conversation.serviceId?.title || 'Service conversation'}</span>
                   <span className="mt-1 flex items-center justify-between gap-2">
                     <span className="truncate text-xs text-ink/45">{lastMessageText(conversation)}</span>
                     {conversation.unreadCount > 0 && <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1 text-[11px] font-bold text-accent-ink">{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</span>}

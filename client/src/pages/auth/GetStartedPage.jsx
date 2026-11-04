@@ -15,6 +15,7 @@ export default function GetStartedPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = getEscrowReturnTo(searchParams);
+  const referralCode = searchParams.get('ref') || searchParams.get('referral') || '';
   const auth = useAuth();
   const emailRef = useRef(null);
   const intentRef = useRef(null);
@@ -65,6 +66,7 @@ export default function GetStartedPage() {
         email: form.email.trim(),
         intents: selectedIntents,
         ...(returnTo ? { returnTo } : {}),
+        ...(referralCode ? { referralCode } : {}),
       });
       navigate(escrowOnboardingDestination(result), { replace: true, state: { newUser: true } });
     } catch (error) {
@@ -75,7 +77,7 @@ export default function GetStartedPage() {
 
   async function continueWithGoogle(idToken) {
     try {
-      const result = await auth.google(idToken, returnTo);
+      const result = await auth.google(idToken, returnTo, referralCode);
       navigate(escrowOnboardingDestination(result), { replace: true, state: { newUser: Boolean(result.accountCreated) } });
     } catch (error) {
       setMessage(error.message);

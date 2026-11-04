@@ -6,6 +6,8 @@ import { usePageTitle } from '../lib/usePageTitle.js';
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -16,7 +18,10 @@ export default function NotificationsPage() {
   const loadNotifications = useCallback(() => {
     setError('');
     api.getNotifications()
-      .then(({ notifications: items }) => setNotifications(items || []))
+      .then(({ notifications: items, unreadCount: count }) => {
+        setNotifications(items || []);
+        setUnreadCount(Number(count) || 0);
+      })
       .catch((loadError) => setError(loadError.message || 'Unable to load notifications.'));
   }, []);
 
@@ -54,10 +59,26 @@ export default function NotificationsPage() {
         setNotifications((current) => current?.map((item) => (
           item._id === notification._id ? { ...item, readAt } : item
         )));
-        window.dispatchEvent(new Event('escrit:notification-received'));
+        setUnreadCount((count) => Math.max(0, count - 1));
+        window.dispatchEvent(new Event('escrit:notification-read'));
       }
     } catch (readError) {
       setError(readError.message || 'Unable to update this notification.');
+    }
+  }
+
+  async function markAllRead() {
+    setMarkingAllRead(true);
+    setError('');
+    try {
+      const { readAt } = await api.markAllNotificationsRead();
+      setNotifications((current) => current?.map((item) => ({ ...item, readAt: item.readAt || readAt })));
+      setUnreadCount(0);
+      window.dispatchEvent(new Event('escrit:notification-read'));
+    } catch (readError) {
+      setError(readError.message || 'Unable to mark notifications as read.');
+    } finally {
+      setMarkingAllRead(false);
     }
   }
 
@@ -69,7 +90,10 @@ export default function NotificationsPage() {
           <h1 className="mt-2 flex items-center gap-3 font-display text-3xl"><Bell aria-hidden="true" size={26} />Notifications</h1>
           <p className="mt-2 text-sm text-ink/60">Account activity, order updates, saved listings, and service conversations.</p>
         </div>
-        <Link to="/account/offers" className="text-sm font-medium text-accent hover:underline">View conversations</Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <button type="button" onClick={markAllRead} disabled={markingAllRead || notifications === null || unreadCount === 0} className="min-h-11 rounded-lg border border-line px-3 text-sm font-medium hover:border-accent disabled:cursor-not-allowed disabled:opacity-50">{markingAllRead ? 'Marking…' : 'Mark all as read'}</button>
+          <Link to="/account/offers" className="text-sm font-medium text-accent hover:underline">View conversations</Link>
+        </div>
       </header>
 
       <section aria-labelledby="email-preferences-heading" className="mt-5 rounded-xl border border-line bg-paper p-4">
@@ -103,7 +127,6 @@ export default function NotificationsPage() {
           {notifications.map((notification) => {
             const isMessage = notification.notificationType === 'service_message';
             const sender = notification.senderId?.displayName || notification.senderId?.businessName || 'Escrit user';
-            const title = isMessage ? notification.title : notification.title;
             const href = notification.href || '/account/notifications';
             return (
               <li key={notification._id}>
@@ -115,7 +138,7 @@ export default function NotificationsPage() {
                   <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? 'bg-line-strong' : 'bg-accent'}`}><span className="sr-only">{notification.readAt ? 'Read' : 'Unread'}</span></span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                      <strong className="truncate text-sm">{title}{isMessage && <span className="font-normal text-ink/55"> · {sender}</span>}</strong>
+                      <strong className="truncate text-sm">{notification.title}{isMessage && <span className="font-normal text-ink/55"> · {sender}</span>}</strong>
                       <time className="shrink-0 text-xs text-ink/45" dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString()}</time>
                     </span>
                     <span className="mt-1 block whitespace-pre-wrap break-words text-sm text-ink/65">{notification.body}</span>

@@ -17,6 +17,7 @@ export default function Register() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const isBuyerFlow = searchParams.get('intent') === 'buyer';
+  const referralCode = searchParams.get('ref') || searchParams.get('referral') || '';
 
   function routeAfterRegistration(state) {
     const requestedPath = searchParams.get('next');
@@ -32,6 +33,7 @@ export default function Register() {
       const { accessToken } = await api.register({
         ...form,
         businessName: isBuyerFlow ? (form.businessName || 'Buyer account') : form.businessName,
+        ...(referralCode ? { referralCode } : {}),
       });
       await login(accessToken);
       routeAfterRegistration({ accountCreated: true });
@@ -47,7 +49,7 @@ export default function Register() {
       setError(null);
       setLoading(true);
       try {
-        const { accessToken, accountCreated } = await api.googleLogin(idToken);
+        const { accessToken, accountCreated } = await api.googleLogin(idToken, '', referralCode);
         await login(accessToken);
         routeAfterRegistration(accountCreated ? { accountCreated: true } : undefined);
       } catch (err) {
