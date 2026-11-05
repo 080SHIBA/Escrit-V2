@@ -26,6 +26,9 @@ import { funnelEventsRouter } from './routes/funnelEvents.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { cartCheckoutRouter } from './routes/cartCheckout.js';
 import { draftsRouter } from './routes/drafts.js';
+import { receiptsRouter, signingSetupRouter } from './routes/deliverySigning.js';
+import { ussdRouter } from './routes/ussd.js';
+import { courseLearningRouter } from './routes/courseLearning.js';
 import { getPlatformSettings } from './services/platformSettings.js';
 import { asyncHandler } from './middleware/asyncHandler.js';
 
@@ -69,6 +72,11 @@ export function createApp() {
   app.use('/api', cartCheckoutRouter);
   app.use('/api/profile', profileRouter);
   app.use('/api/drafts', draftsRouter);
+  app.use('/api/receipts', receiptsRouter);
+  app.use('/api/courses', courseLearningRouter);
+  app.use('/api/signing', signingSetupRouter);
+  // WHY urlencoded here: USSD gateways post form data, unlike the rest of the API which uses JSON.
+  app.use('/api/ussd', express.urlencoded({ extended: false, limit: '4kb' }), ussdRouter);
   app.use('/api/kyc', kycRouter);
   app.use('/api/seller', sellerRouter);
   app.use('/api/banks', bankResolverRouter);

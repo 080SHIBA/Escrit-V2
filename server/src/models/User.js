@@ -99,6 +99,44 @@ const userSchema = new mongoose.Schema(
     escrowRecipientPromptShownAt: { type: Date, default: null },
     displayName: { type: String, default: '' },
     phone: { type: String, default: '' },
+    // WHAT: PIN used to sign for a delivery over USSD (phone keypad, no internet needed).
+    // WHY stored as a hash and select:false: it is a credential, so it must never be readable in
+    // plain text or returned by accident from an ordinary user query.
+    signingPin: {
+      type: new mongoose.Schema({
+        hash: { type: String, default: '' },
+        setAt: { type: Date, default: null },
+        failedAttempts: { type: Number, default: 0 },
+        lockedUntil: { type: Date, default: null },
+      }, { _id: false }),
+      default: undefined,
+      select: false,
+    },
+    // WHAT: fingerprint / face-unlock credentials registered on the buyer's own devices (WebAuthn).
+    // WHY WebAuthn: the phone itself checks the fingerprint or face and returns a cryptographic
+    // proof. Escrit never receives or stores biometric data, only a public key.
+    webauthnCredentials: {
+      type: [new mongoose.Schema({
+        credentialId: { type: String, required: true },
+        publicKey: { type: String, required: true },
+        counter: { type: Number, default: 0 },
+        transports: { type: [String], default: [] },
+        label: { type: String, default: 'This device', maxlength: 60 },
+        createdAt: { type: Date, default: Date.now },
+      }, { _id: false })],
+      default: [],
+      select: false,
+    },
+    // A one-time challenge for an in-progress WebAuthn ceremony (expires in minutes).
+    webauthnChallenge: {
+      type: new mongoose.Schema({
+        value: { type: String, default: '' },
+        purpose: { type: String, default: '' },
+        expiresAt: { type: Date, default: null },
+      }, { _id: false }),
+      default: undefined,
+      select: false,
+    },
     city: { type: String, default: '' },
     bio: { type: String, default: '', maxlength: 500 },
     averageRating: { type: Number, default: 0 },

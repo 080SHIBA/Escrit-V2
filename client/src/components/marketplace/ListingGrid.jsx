@@ -2,28 +2,25 @@ import ListingCard from './ListingCard.jsx';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll.js';
 
 // WHAT: the one grid layout used by the skeleton and the real list.
-// WHY fixed columns: the visitor asked to compare as many products as possible
-// at a glance. A fixed 4-column grid on tablets and desktops gives a predictable
-// four-per-row wall of products (auto-fill gave 5-6 columns on wide screens and
-// 2-3 on laptops, which felt random). Phones below 768px drop to 2 columns,
-// because four cards across a 375px screen would be about 80px wide, too narrow
-// to read a price or tap the buttons.
-const GRID_CLASSES = 'grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-[14px]';
+// WHY many columns: shoppers asked to compare as many products as possible at a glance. Columns grow
+// with the screen: 2 on phones (3 would make cards too narrow to tap), 3 on large phones/small tablets,
+// then 4, 5 and 6 on laptops and wide monitors. Cards are compact (see ListingCard) so every detail
+// still fits, and anyone wanting more opens the listing.
+const GRID_CLASSES = 'grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
 
-// WHAT: how many skeleton cards to show while the first page loads.
-// WHY 8: two full rows on a 4-column grid, enough to fill the first screen so
-// the page does not look half empty while waiting.
-const SKELETON_COUNT = 8;
+// WHAT: skeleton cards shown while the first page loads.
+// WHY 12: two full rows on the widest grid, enough to fill the first screen.
+const SKELETON_COUNT = 12;
 
 function SkeletonCard() {
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="aspect-[4/3] animate-pulse bg-line/40" />
-      <div className="space-y-3 p-3 sm:p-4">
+      <div className="aspect-[5/4] animate-pulse bg-line/40" />
+      <div className="space-y-2 p-2 sm:p-2.5">
         <div className="h-3 w-24 animate-pulse rounded bg-line/40" />
         <div className="h-5 w-3/4 animate-pulse rounded bg-line/40" />
         <div className="h-4 w-1/2 animate-pulse rounded bg-line/40" />
-        <div className="h-10 animate-pulse rounded bg-line/40" />
+        <div className="h-8 animate-pulse rounded bg-line/40" />
       </div>
     </div>
   );
@@ -93,8 +90,8 @@ export default function ListingGrid({
       {/* WHAT: skeleton row shown while the next page is being fetched.
           WHY: tells the visitor more is coming, so the end of the list never looks like a dead end. */}
       {loadingMore && (
-        <div className={`${GRID_CLASSES} mt-[14px]`} aria-busy="true" aria-label="Loading more listings">
-          {Array.from({ length: 4 }, (_, index) => <SkeletonCard key={index} />)}
+        <div className={`${GRID_CLASSES} mt-2.5`} aria-busy="true" aria-label="Loading more listings">
+          {Array.from({ length: 6 }, (_, index) => <SkeletonCard key={index} />)}
         </div>
       )}
 

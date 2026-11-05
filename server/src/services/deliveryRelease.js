@@ -21,5 +21,9 @@ async function sweep() {
 
 export function startDeliveryReleaseJob() {
   cron.schedule('* * * * *', sweep);
-  console.log('[delivery-release] 72-hour release job started');
+  // WHY this job still runs: it is the safety net for buyers who never sign for a delivery. When a
+  // buyer signs (face, device or USSD) funds are released immediately and this job is not needed
+  // for that order. It only releases orders the seller marked delivered whose release window
+  // (releaseWindowHours, 72 by default but configurable per listing) has passed with no dispute.
+  console.log('[delivery-release] safety-net release job started (runs only for unsigned, undisputed deliveries)');
 }

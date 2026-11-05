@@ -4,6 +4,7 @@ import ShopifyIntegration from '../../components/ShopifyIntegration.jsx';
 import { CheckCircleIcon, ShieldCheckIcon } from '../../components/icons.jsx';
 import { useKyc } from '../../hooks/useKyc.js';
 import { useFormDraft } from '../../hooks/useFormDraft.js';
+import SigningSetup from '../../components/SigningSetup.jsx';
 import AutosaveStatus from '../../components/AutosaveStatus.jsx';
 import { useProfile } from '../../hooks/useProfile.js';
 import FaceLivenessCheck from '../../components/FaceLivenessCheck.jsx';
@@ -468,7 +469,11 @@ export function ProfileKycPage() {
       <div className="mt-5">
         {tab === 'profile' ? (
           <div className="grid gap-4 min-[860px]:grid-cols-[minmax(0,1.4fr)_minmax(15rem,0.8fr)]">
-            <ProfileForm profile={profile} />
+            <div>
+              <ProfileForm profile={profile} />
+              {/* WHAT: PIN + fingerprint setup for signing deliveries. WHY here: it needs the phone number from this profile. Skipped in mock mode, which has no server. */}
+              {!kycMocksEnabled && <SigningSetup />}
+            </div>
             <UnlockCard />
           </div>
         ) : screen === 'pending' || screen === 'verified' || screen === 'rejected' && !retrying ? (

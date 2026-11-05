@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import SessionCheckSkeleton from './SessionCheckSkeleton.jsx';
 
@@ -9,8 +9,11 @@ import SessionCheckSkeleton from './SessionCheckSkeleton.jsx';
 // first restore attempt has settled.
 export default function RequireAuth({ children }) {
   const { status, restoring } = useAuthContext();
+  const location = useLocation();
 
   if (status === 'checking' || (status === 'anon' && restoring)) return <SessionCheckSkeleton />;
-  if (status === 'anon') return <Navigate to="/sign-in" replace />;
+  // WHY ?next=: after signing in, the person returns to the page they asked for (a receipt link, for
+  // example) instead of landing on the marketplace and having to find it again.
+  if (status === 'anon') return <Navigate to={`/sign-in?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`} replace />;
   return children;
 }

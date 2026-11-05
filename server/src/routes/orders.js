@@ -11,6 +11,8 @@ import { publicSellerName } from '../utils/publicSellerName.js';
 import { raiseDispute, releaseOnBuyerConfirmation } from '../services/escrow.js';
 import { deliveryReleaseTime } from '../shared/orderState.js';
 import { notifyDisputeRaised } from '../services/notificationEvents.js';
+import { receiptUrl } from '../services/deliveryCodes.js';
+import { buildTimeline, hasSellerUpdates, validateTrackingUpdate } from '../services/deliveryTracking.js';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
@@ -46,6 +48,15 @@ function toOrder(transaction, role, counterparty) {
     releaseDueAt: transaction.releaseDueAt || null,
     releaseWindowHours: transaction.releaseWindowHours,
     linkId: String(link._id),
+    // WHY listingId: a paid course order links to its lessons (/learn/:listingId).
+    listingId: link.listingId ? String(link.listingId) : null,
+    // WHAT: per-order tracking and signing info. WHY here: the orders list is the one place the
+    // buyer and seller already look, so each order carries its own code, estimate and signed state.
+    trackingCode: transaction.trackingCode || '',
+    estimatedArrivalAt: transaction.estimatedArrivalAt || null,
+    signed: Boolean(transaction.deliverySignature?.signedAt),
+    // The receipt link is only handed to the buyer, never to the seller.
+    receiptUrl: role === 'buy' ? receiptUrl(transaction._id) : null,
     status: transaction.status,
     payoutState: transaction.payoutState,
     finalOutcome: transaction.status === TX_STATUS.RESOLVED_REFUNDED
@@ -63,7 +74,7 @@ ordersRouter.get('/', asyncHandler(async (req, res) => {
   if (role === 'sell') {
     const links = await Link.find({ sellerId: req.sellerId }).select('_id');
     transactions = await Transaction.find({ linkId: { $in: links.map((link) => link._id) } })
-      .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType');
+      .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType listingId');
     const buyerIds = transactions.map((tx) => tx.buyerUserId).filter(Boolean);
     const buyers = await User.find({ _id: { $in: buyerIds } }).select('displayName businessName');
     const buyerById = new Map(buyers.map((buyer) => [String(buyer._id), buyer.displayName || buyer.businessName]));
@@ -75,7 +86,7 @@ ordersRouter.get('/', asyncHandler(async (req, res) => {
   }
 
   transactions = await Transaction.find({ buyerUserId: req.sellerId })
-    .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType sellerId');
+    .sort({ createdAt: -1 }).populate('linkId', 'itemName listingType fulfillmentType sellerId listingId');
   const sellerIds = transactions.map((tx) => tx.linkId?.sellerId).filter(Boolean);
   const sellers = await User.find({ _id: { $in: sellerIds } }).select('displayName businessName fullName');
   const sellerById = new Map(sellers.map((seller) => [String(seller._id), publicSellerName(seller)]));
@@ -136,4 +147,41 @@ ordersRouter.post('/:id/dispute', validate(disputeSchema), asyncHandler(async (r
   const seller = await User.findById(transaction.linkId.sellerId).select('displayName businessName');
   await notifyDisputeRaised({ io: req.app.get('io'), transaction: disputed });
   res.json({ order: toOrder(disputed, 'buy', seller?.displayName || seller?.businessName) });
+}));
+
+// ---- Tracking (separate for every order) ----
+// WHAT: the timeline, tracking code and arrival estimate for one order, for its buyer or its seller.
+ordersRouter.get('/:id/tracking', asyncHandler(async (req, res) => {
+  const isSeller = await Link.exists({ _id: (await Transaction.findById(req.params.id).select('linkId'))?.linkId, sellerId: req.sellerId });
+  const transaction = await loadAuthorizedOrder(req, isSeller ? 'sell' : 'buy');
+  res.json({
+    trackingCode: transaction.trackingCode,
+    estimatedArrivalAt: transaction.estimatedArrivalAt,
+    timeline: buildTimeline(transaction),
+    sellerHasPosted: hasSellerUpdates(transaction),
+    signed: Boolean(transaction.deliverySignature?.signedAt),
+  });
+}));
+
+const trackingUpdateSchema = Joi.object({
+  status: Joi.string().required(),
+  note: Joi.string().trim().max(300).allow('').default(''),
+  estimatedArrivalAt: Joi.date().iso().allow(null),
+});
+
+// WHAT: the seller posts progress and/or an arrival estimate for their own order.
+// WHY the seller does this by hand: there is no central courier feeding Escrit, so delivery here is
+// person-to-person. The buyer is never blocked if the seller posts nothing: signing for the delivery
+// does not depend on these updates.
+ordersRouter.post('/:id/tracking', validate(trackingUpdateSchema), asyncHandler(async (req, res) => {
+  const transaction = await loadAuthorizedOrder(req, 'sell');
+  if (![TX_STATUS.PAID_HELD, TX_STATUS.DIRECT_PAID].includes(transaction.status)) throw new AppError(409, 'Only paid orders can be tracked.');
+  const check = validateTrackingUpdate(transaction, req.body);
+  if (!check.ok) throw new AppError(400, check.error);
+  transaction.trackingEvents.push({ status: req.body.status, note: req.body.note, source: 'seller' });
+  if (req.body.estimatedArrivalAt) transaction.estimatedArrivalAt = req.body.estimatedArrivalAt;
+  transaction.fulfillmentStatus = transaction.fulfillmentStatus === 'NOT_STARTED' ? 'IN_TRANSIT' : transaction.fulfillmentStatus;
+  transaction.fulfillmentUpdatedAt = new Date();
+  await transaction.save();
+  res.json({ timeline: buildTimeline(transaction), estimatedArrivalAt: transaction.estimatedArrivalAt });
 }));

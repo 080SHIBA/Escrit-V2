@@ -85,3 +85,30 @@ export function optimizeImageUrl(url, width = 1000) {
   if (!url || !url.includes('res.cloudinary.com') || !url.includes(marker)) return url;
   return url.replace(marker, `${marker}f_auto,q_auto,c_limit,w_${width}/`);
 }
+
+// WHAT: upload a lesson attachment (PDF, Word, text) to Cloudinary as a "raw" file.
+// WHY raw: Cloudinary's image and video endpoints reject documents; raw storage keeps them as-is for download.
+export const MAX_DOCUMENT_MB = 15;
+export async function uploadItemDocument(file, onProgress) {
+  if (file.size > MAX_DOCUMENT_MB * 1024 * 1024) throw new Error(`That file is over ${MAX_DOCUMENT_MB} MB.`);
+  const { cloudName, apiKey, timestamp, signature, folder } = await api.getUploadSignature();
+  const body = new FormData();
+  body.append('file', file);
+  body.append('api_key', apiKey);
+  body.append('timestamp', timestamp);
+  body.append('signature', signature);
+  body.append('folder', folder);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`);
+    xhr.upload.onprogress = (event) => { if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100)); };
+    xhr.onload = () => {
+      let result = {};
+      try { result = JSON.parse(xhr.responseText); } catch { /* handled below */ }
+      if (xhr.status >= 200 && xhr.status < 300 && result.secure_url) resolve(result.secure_url);
+      else reject(new Error('The file upload failed. Please try again.'));
+    };
+    xhr.onerror = () => reject(new Error('Network error. Check your connection and try again.'));
+    xhr.send(body);
+  });
+}

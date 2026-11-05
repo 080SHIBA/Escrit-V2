@@ -43,6 +43,11 @@ const courseSchema = new mongoose.Schema(
     reviewCount: { type: Number, default: 0 },
     price: { type: Number, required: true, min: 0 },
     curriculum: { type: [curriculumItemSchema], default: [] },
+    // WHAT: the full teaching content: modules of lessons (text, video, files) and assessments.
+    // WHY Mixed: its shape is validated and normalised by services/courseContent.js on every save, and it
+    // is always read and written as one document, so a rigid sub-schema would only add friction.
+    // The old `curriculum` list stays for listings created before this existed.
+    content: { type: mongoose.Schema.Types.Mixed, default: () => ({ modules: [], assessments: [] }) },
     deliveryFormat: { type: String, enum: ['self-paced', 'live'], default: 'self-paced' },
     format: { type: String, enum: ['self-paced-videos', 'live-cohort', 'pdf-ebook'], default: null },
     level: { type: String, enum: ['beginner', 'intermediate', 'advanced'], default: null },

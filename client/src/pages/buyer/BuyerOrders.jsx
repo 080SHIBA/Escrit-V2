@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { HandshakeIcon, MyOrdersIcon } from '../../components/icons.jsx';
+import OrderTrackingPanel from '../../components/OrderTrackingPanel.jsx';
+import { showsTracking } from '../../lib/deliveryTrackingView.js';
 import { api } from '../../lib/api.js';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { useOrders, useOrderActions } from '../../lib/useOrders.js';
@@ -274,6 +276,14 @@ export function OrderCard({ order, role, expanded, onToggle, onAction, busy, err
       <div className="mt-5"><OrderTracker order={order} /></div>
       {expanded && (
         <section className="mt-5 border-t border-line pt-4" aria-label={`Actions for ${order.title}`}>
+          {/* WHAT: this order's own tracking, shown for paid product orders only (courses and services have no delivery). */}
+          {/* WHAT: paid course orders open the lessons (buyer) or the course builder (seller). */}
+          {order.listingType === 'course' && order.listingId && order.status !== 'CREATED' && (
+            <div className="mb-4">
+              <Link to={role === 'buy' ? `/learn/${order.listingId}` : `/courses/${order.listingId}/author`} className="inline-flex min-h-11 items-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-ink">{role === 'buy' ? 'Start learning' : 'Edit course content'}</Link>
+            </div>
+          )}
+          {showsTracking(order) && <div className="mb-4"><OrderTrackingPanel order={order} role={role} /></div>}
           <OrderActions order={order} role={role} onAction={onAction} busy={busy} onDispute={onDispute} />
           {error && (
             <div className="mt-3">

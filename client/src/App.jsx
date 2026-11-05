@@ -13,6 +13,9 @@ import CreateLink from './pages/seller/CreateLink.jsx';
 import LinkDetail from './pages/seller/LinkDetail.jsx';
 import BankPage from './pages/seller/BankAccount.jsx';
 import ProfileKycPage from './pages/seller/ProfileKycPage.jsx';
+import ReceiptPage from './pages/buyer/ReceiptPage.jsx';
+import CourseLearnPage from './pages/CourseLearnPage.jsx';
+import CourseAuthoringPage from './pages/seller/CourseAuthoringPage.jsx';
 import Disputes from './pages/admin/Disputes.jsx';
 import AdminQueue from './pages/admin/AdminQueue.jsx';
 import PlatformSettings from './pages/admin/PlatformSettings.jsx';
@@ -110,6 +113,11 @@ export default function App() {
         <Route path="/dashboard/new" element={<RequireAuth><CreateLink /></RequireAuth>} />
         <Route path="/dashboard/links/:id" element={<RequireAuth><LinkDetail /></RequireAuth>} />
         <Route path="/dashboard/bank" element={<RequireAuth><BankPage /></RequireAuth>} />
+        {/* Course learning (enrolled buyers, and the author as a preview) and authoring (the seller). */}
+        <Route path="/learn/:id" element={<RequireAuth><CourseLearnPage /></RequireAuth>} />
+        <Route path="/courses/:id/author" element={<RequireAuth><CourseAuthoringPage /></RequireAuth>} />
+        {/* The buyer's receipt link: sign for a delivery. RequireAuth brings them back here after sign-in. */}
+        <Route path="/receipt/:token" element={<RequireAuth><ReceiptPage /></RequireAuth>} />
         <Route path="/settings" element={kycMocksEnabled ? <ProfileKycPage /> : <RequireAuth><ProfileKycPage /></RequireAuth>} />
         <Route path="/account/list-product" element={<Navigate to="/account/storefront?tab=list" replace />} />
         <Route path="/account/bank" element={<RequireAuth><BankPage /></RequireAuth>} />

@@ -28,12 +28,12 @@ function readFilters(searchParams) {
 }
 
 // WHAT: how many listings each request fetches on the marketplace pages.
-// WHY 48: the first request has to fill several screens (12 rows of 4) so the
+// WHY 48: the first request has to fill several screens (10 rows of 6 on a wide screen) so the
 // visitor can browse for a good while before the next page is needed. It is a
-// multiple of 4 so the last row of each page is never ragged, and well under the
+// multiple of 2, 3, 4, 5 and 6 so the last row of each page is never ragged at any column count, and well under the
 // server's cap of 100 per request. Further pages use the same size so the cache
 // key and merge logic stay simple.
-const MARKETPLACE_PAGE_SIZE = 48;
+const MARKETPLACE_PAGE_SIZE = 60;
 
 const PAGE_CONTENT = {
   product: {
@@ -133,10 +133,10 @@ export default function MarketplacePage({ type = 'product' }) {
     return sortListings(serviceFiltered, filters.sort);
   }, [filters, listings, type]);
 
-  // WHY max-w-[1440px] on the page container: four columns of readable cards need
-  // more than the old 1280px; the extra width keeps each card about 330px wide.
+  // WHY max-w-[1760px] on the page container: up to six compact columns need more room
+  // than the old 1280px container.
   return (
-    <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-[1760px] px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           {seller && (

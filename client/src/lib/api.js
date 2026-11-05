@@ -54,14 +54,17 @@ async function refreshAccessToken() {
 }
 
 async function request(path, { method = 'GET', body, auth = false, signal, keepalive = false } = {}, isRetry = false) {
-  const headers = { 'Content-Type': 'application/json' };
+  // WHY the FormData branch: file uploads must be sent as multipart. Setting a JSON content type (or
+  // stringifying the form) would break them; the browser sets the correct multipart header itself.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  const headers = isForm ? {} : { 'Content-Type': 'application/json' };
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const res = await fetch(apiUrl(`/api${path}`), {
     method,
     headers,
     credentials: 'include', // sends the refresh cookie
-    body: body ? JSON.stringify(body) : undefined,
+    body: isForm ? body : body ? JSON.stringify(body) : undefined,
     signal,
     // WHY keepalive: lets a request started while the tab is closing (autosave
     // flush on pagehide) finish after the page is gone.
@@ -331,6 +334,25 @@ export const api = {
     ? marketplaceMockHandlers.unsaveListing(type, id)
     : request(`/marketplace/me/favorites/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
   // Autosaved form drafts (see hooks/useFormDraft.js).
+  // Per-order tracking, receipt signing and signing setup (see server routes/orders.js, deliverySigning.js).
+  getOrderTracking: (id) => request(`/orders/${encodeURIComponent(id)}/tracking`, { auth: true }),
+  postOrderTracking: (id, body) => request(`/orders/${encodeURIComponent(id)}/tracking`, { method: 'POST', body, auth: true }),
+  getReceipt: (token) => request(`/receipts/${encodeURIComponent(token)}`, { auth: true }),
+  startReceiptLiveness: (token) => request(`/receipts/${encodeURIComponent(token)}/liveness-session`, { method: 'POST', auth: true }),
+  signReceiptWithFace: (token, body) => request(`/receipts/${encodeURIComponent(token)}/sign/face`, { method: 'POST', body, auth: true }),
+  receiptDeviceOptions: (token) => request(`/receipts/${encodeURIComponent(token)}/device/options`, { method: 'POST', auth: true }),
+  signReceiptWithDevice: (token, response) => request(`/receipts/${encodeURIComponent(token)}/sign/device`, { method: 'POST', body: { response }, auth: true }),
+  getSigningSetup: () => request('/signing', { auth: true }),
+  setSigningPin: (body) => request('/signing/pin', { method: 'PUT', body, auth: true }),
+  deviceRegisterOptions: () => request('/signing/device/register-options', { method: 'POST', auth: true }),
+  deviceRegister: (response, label) => request('/signing/device/register', { method: 'POST', body: { response, label }, auth: true }),
+  // Course authoring and learning (see server routes/courseLearning.js).
+  getCourseContent: (id) => request(`/courses/${encodeURIComponent(id)}/content`, { auth: true }),
+  saveCourseContent: (id, content) => request(`/courses/${encodeURIComponent(id)}/content`, { method: 'PUT', body: { content }, auth: true }),
+  importCourseText: (id, file) => { const body = new FormData(); body.append('file', file); return request(`/courses/${encodeURIComponent(id)}/import-text`, { method: 'POST', body, auth: true }); },
+  getCourseLearning: (id) => request(`/courses/${encodeURIComponent(id)}/learn`, { auth: true }),
+  completeLesson: (id, lessonId) => request(`/courses/${encodeURIComponent(id)}/lessons/${lessonId}/complete`, { method: 'POST', auth: true }),
+  submitAssessment: (id, assessmentId, answers) => request(`/courses/${encodeURIComponent(id)}/assessments/${assessmentId}/submit`, { method: 'POST', body: { answers }, auth: true }),
   startKycLiveness: () => request('/kyc/liveness-session', { method: 'POST', auth: true }),
   getFormDraft: (key) => request(`/drafts/${encodeURIComponent(key)}`, { auth: true }),
   saveFormDraft: (key, data, clientUpdatedAt, { keepalive = false } = {}) => request(`/drafts/${encodeURIComponent(key)}`, { method: 'PUT', body: { data, clientUpdatedAt }, auth: true, keepalive }),

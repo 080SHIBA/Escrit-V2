@@ -12,6 +12,7 @@
     "seed:marketplace": "node src/seedMarketplace.js"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.3",
     "axios": "^1.7.7",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.11.0",
@@ -23,6 +24,7 @@
     "google-auth-library": "^9.14.1",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.13.0",
     "mongoose": "^8.6.0",
     "multer": "^2.4.0",
     "node-cron": "^3.0.3",
