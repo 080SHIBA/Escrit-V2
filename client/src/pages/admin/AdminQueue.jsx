@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import AdminToolsNav from '../../components/admin/AdminToolsNav.jsx';
+// WHAT: router Link component. WHY: lets the "Category pending" notice jump straight to the Categories queue.
+import { Link } from 'react-router-dom';
 
 export default function AdminQueue({ mode }) {
   const [rows, setRows] = useState(null);
@@ -123,11 +125,81 @@ function KycRow({ user, note, onNote, onReview, busy }) {
 }
 
 function ListingRow({ listing, note, onNote, onReview, busy }) {
-  return <section className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(9rem,12rem)_minmax(0,1fr)_minmax(17rem,20rem)]">
-    {listing.images?.[0] ? <img src={listing.images[0]} alt="" className="aspect-square w-full rounded-md object-cover" /> : <div className="aspect-square rounded-md bg-line/40" />}
-    <div><p className="text-xs uppercase tracking-wider text-ink/50">{listing.listingType} · {listing.category}</p><h2 className="mt-1 font-medium">{listing.title}</h2><p className="mt-1 text-sm text-ink/60">{listing.seller?.businessName} · {listing.seller?.email}</p><p className="mt-2 line-clamp-3 text-sm leading-5 text-ink/60">{listing.description}</p></div>
-    <div className="space-y-2"><label className="block text-xs text-ink/55">Moderation note<textarea value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} rows={2} className="mt-1 w-full border border-line bg-input px-2 py-1.5 text-sm" /></label><div className="flex gap-2"><button disabled={busy} onClick={() => onReview(true)} className="flex-1 rounded-md bg-released px-3 py-2 text-xs font-medium text-paper disabled:opacity-50">Approve</button><button disabled={busy} onClick={() => onReview(false)} className="flex-1 rounded-md border border-dispute/40 px-3 py-2 text-xs font-medium text-dispute disabled:opacity-50">Reject</button></div></div>
-  </section>;
+  // WHAT: true when the seller's category on this listing is still waiting for admin review.
+  // WHY: the server returns 409 if you approve a listing in this state, so we warn up front instead.
+  const categoryPending = listing.categoryReviewStatus === "pending";
+
+  return (
+    <section className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(9rem,12rem)_minmax(0,1fr)_minmax(17rem,20rem)]">
+      {listing.images?.[0] ? (
+        <img
+          src={listing.images[0]}
+          alt=""
+          className="aspect-square w-full rounded-md object-cover"
+        />
+      ) : (
+        <div className="aspect-square rounded-md bg-line/40" />
+      )}
+      <div>
+        <p className="text-xs uppercase tracking-wider text-ink/50">
+          {listing.listingType} · {listing.category}
+        </p>
+        <h2 className="mt-1 font-medium">{listing.title}</h2>
+        <p className="mt-1 text-sm text-ink/60">
+          {listing.seller?.businessName} · {listing.seller?.email}
+        </p>
+        <p className="mt-2 line-clamp-3 text-sm leading-5 text-ink/60">
+          {listing.description}
+        </p>
+        {/* WHAT: badge and link shown only for listings with a pending category. WHY: tells the admin what to do first. */}
+        {categoryPending && (
+          <p className="mt-3 rounded-md border border-line-strong bg-line/30 px-3 py-2 text-xs text-ink/70">
+            Category pending. Resolve it in{" "}
+            <Link
+              to="/admin/categories"
+              className="font-medium underline underline-offset-4"
+            >
+              Category requests
+            </Link>{" "}
+            before approving this listing.
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <label className="block text-xs text-ink/55">
+          Moderation note
+          <textarea
+            value={note}
+            onChange={(event) => onNote(event.target.value)}
+            maxLength={500}
+            rows={2}
+            className="mt-1 w-full border border-line bg-input px-2 py-1.5 text-sm"
+          />
+        </label>
+        <div className="flex gap-2">
+          {/* WHAT: Approve is disabled while the category is pending. WHY: the server would reject it with 409 anyway. */}
+          <button
+            disabled={busy || categoryPending}
+            onClick={() => onReview(true)}
+            title={
+              categoryPending ? "Resolve the pending category first" : undefined
+            }
+            className="flex-1 rounded-md bg-released px-3 py-2 text-xs font-medium text-paper disabled:opacity-50"
+          >
+            Approve
+          </button>
+          {/* Reject stays enabled: rejecting never needs the category to be resolved. */}
+          <button
+            disabled={busy}
+            onClick={() => onReview(false)}
+            className="flex-1 rounded-md border border-dispute/40 px-3 py-2 text-xs font-medium text-dispute disabled:opacity-50"
+          >
+            Reject
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function UserRow({ user, onChange, busy }) {
