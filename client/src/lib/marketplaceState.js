@@ -36,9 +36,13 @@ export function formatRating(ratingAvg, ratingCount) {
   return `${Number(ratingAvg).toFixed(1)} (${ratingCount})`;
 }
 
+// WHAT: which primary action a listing card offers, by listing type (see shared/listingTypePolicy.js).
+// WHY: only products are added to a cart. Courses are enrolled in and services are booked, each as an
+// immediate purchase, so a course card must never say "Add to cart".
 export function getMarketplaceCardAction(listing) {
-  if (listing.type !== 'service') return 'cart';
-  return listing.serviceModel === 'custom_quote' ? 'request-quote' : 'book';
+  if (listing.type === 'course') return 'enroll';
+  if (listing.type === 'service') return listing.serviceModel === 'custom_quote' ? 'request-quote' : 'book';
+  return 'cart';
 }
 
 export function filterListings(listings, filters = {}) {

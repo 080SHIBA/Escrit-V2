@@ -1,7 +1,9 @@
 export const KYC_STEPS = Object.freeze([
   'Personal details',
+  // WHY the face check comes before the ID upload: the live check is the quick, guided part
+  // and proves a real person is present first; ID documents (the slower file step) follow.
+  'Face check',
   'ID document',
-  'Selfie check',
   'Review',
 ]);
 
@@ -55,8 +57,9 @@ export function validateFile(file, { allowPdf = false } = {}) {
 
 export function validateStep(step, form, files, consent) {
   if (step === 0) return Object.values(validatePersonalDetails(form))[0] || '';
-  if (step === 1) return validateFile(files.idFront, { allowPdf: true }) || (!files.idFront ? 'Upload the front of your ID.' : '');
-  if (step === 2) return validateFile(files.selfie) || (!files.selfie ? 'Complete the selfie liveness check.' : '');
+  // files.liveness is { token, proof } from the face check. It is not a File: no photo is taken.
+  if (step === 1) return files.liveness ? '' : 'Complete the face check to continue.';
+  if (step === 2) return validateFile(files.idFront, { allowPdf: true }) || (!files.idFront ? 'Upload the front of your ID.' : '');
   if (step === 3 && !consent) return 'Confirm that these details are yours and accurate.';
   return '';
 }

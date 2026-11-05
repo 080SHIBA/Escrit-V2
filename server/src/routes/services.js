@@ -34,6 +34,7 @@ import {
   overlaps,
   slotReservationKeys,
 } from '../services/serviceAvailability.js';
+import { buyerIdentityReady, IDENTITY_REQUIRED_MESSAGE } from '../services/buyerIdentity.js';
 
 export const servicesRouter = Router();
 
@@ -475,7 +476,8 @@ async function startCheckout(order, buyerId) {
     throw new AppError(409, 'This appointment hold expired. Choose another available time.');
   }
   const buyer = await User.findById(buyerId);
-  if (!buyer?.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout.');
+  // WHY shared helper: see services/buyerIdentity.js. Approved KYC users must pass here.
+  if (!buyerIdentityReady(buyer)) throw new AppError(403, IDENTITY_REQUIRED_MESSAGE);
   const service = await Service.findById(order.serviceId);
   if (!service) throw new AppError(404, 'Service listing not found.');
   const seller = await User.findById(order.sellerId);

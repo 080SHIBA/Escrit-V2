@@ -7,6 +7,7 @@ import { useListingDraft } from '../../hooks/useListingDraft.js';
 import { usePageTitle } from '../../lib/usePageTitle.js';
 import { CheckCircleIcon } from '../../components/icons.jsx';
 import PaymentOptionsCard from '../../components/PaymentOptionsCard.jsx';
+import { applyTypePaymentRules } from '../../shared/listingTypePolicy.js';
 import { usePreferences } from '../../hooks/usePreferences.js';
 import {
   FULFILMENT_DEFAULT_LABELS,
@@ -335,7 +336,9 @@ export function ListProductPage({ embedded = false }) {
   const [activeSection, setActiveSection] = useState(0);
   const effectiveForm = {
     ...draft.form,
-    paymentOptions: resolveListingPaymentOptions(draft.form, preferences),
+    // WHY applyTypePaymentRules: a course is paid for and unlocked instantly, so escrow never applies,
+    // whatever the seller's account default says. Products and services keep the seller's choice.
+    paymentOptions: applyTypePaymentRules(draft.form.type, resolveListingPaymentOptions(draft.form, preferences)),
     fulfillment: resolveListingFulfilment(draft.form, preferences),
   };
   const errors = validateListing(effectiveForm, draft.photos);
@@ -472,6 +475,12 @@ export function ListProductPage({ embedded = false }) {
               onFulfilmentChange={updateFulfilment}
             />
             <div className="listing-form-payment scroll-mt-24" id="listing-payment">
+              {draft.form.type === 'course' ? (
+                <section className="rounded-2xl border border-line bg-paper p-4 sm:p-5">
+                  <h2 className="font-display text-lg">Payment</h2>
+                  <p className="mt-2 text-sm text-ink/65">Courses are not held in escrow. Buyers get access the moment their payment clears, so there is nothing to release.</p>
+                </section>
+              ) : (
               <PaymentOptionsCard
                 paymentDefault={preferences.paymentDefault}
                 paymentOptions={effectiveForm.paymentOptions}
@@ -481,6 +490,7 @@ export function ListProductPage({ embedded = false }) {
                   draft.updateField('paymentOptions', paymentOptions);
                 }}
               />
+              )}
             </div>
           </div>
           <ListingPreview form={effectiveForm} photos={photos} />

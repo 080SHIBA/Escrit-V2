@@ -24,6 +24,8 @@ import { publicSellerName, sanitizePublicSeller } from '../utils/publicSellerNam
 import { notifyUser } from '../services/notifications.js';
 import { notifyListingSubmitted } from '../services/notificationEvents.js';
 import { DEFAULT_RELEASE_WINDOW_HOURS } from '../shared/releaseConditions.js';
+import { buyerIdentityReady, IDENTITY_REQUIRED_MESSAGE } from '../services/buyerIdentity.js';
+import { applyTypePaymentRules } from '../shared/listingTypePolicy.js';
 
 export const marketplaceRouter = Router();
 export const listingWorkflowRouter = Router();
@@ -51,9 +53,15 @@ function transactionPreferencesFor(user) {
 
 export function effectivePaymentOptions(listing, seller) {
   const defaults = transactionPreferencesFor(seller);
-  return listing.overridesDefault
+  const options = listing.overridesDefault
     ? listing.paymentOptions || PAYMENT_OPTIONS[defaults.paymentDefault]
     : PAYMENT_OPTIONS[defaults.paymentDefault] || PAYMENT_OPTIONS.both;
+  // WHAT: courses never use escrow, whatever the seller default says.
+  // WHY: a course grants access the moment it is paid, so there is nothing to hold or release.
+  // Doing it here (the one place every checkout asks) means no route can forget the rule.
+  // How we recognise a course: a Mongoose Course document, or a plain object tagged as one.
+  const isCourse = listing?.constructor?.modelName === 'Course' || listing?.listingType === 'course' || listing?.type === 'course';
+  return isCourse ? applyTypePaymentRules('course', options) : options;
 }
 
 export function effectiveFulfilment(listing, seller) {
@@ -461,7 +469,8 @@ const cartCheckoutSchema = Joi.object({
 marketplaceRouter.post('/me/cart/checkout', requireAuth, validate(cartCheckoutSchema), asyncHandler(async (req, res) => {
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
-  if (!buyer.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
+  // WHY shared helper: see services/buyerIdentity.js. Approved KYC users must pass here.
+  if (!buyerIdentityReady(buyer)) throw new AppError(403, IDENTITY_REQUIRED_MESSAGE);
   const items = await populateSavedItems(buyer.cartItems);
   if (!items.length) throw new AppError(409, 'Your cart is empty');
   if (items.some((entry) => entry.listingType === 'service')) {
@@ -611,14 +620,22 @@ marketplaceRouter.post('/me/favorites', requireAuth, validate(listingReferenceSc
   }
   await buyer.save();
   if (!exists) {
-    await notifyUser({
-      io: req.app.get('io'),
-      recipientId: buyer._id,
-      type: 'listing_saved',
-      title: 'Listing saved',
-      message: `“${listing.title}” was added to your saved listings.`,
-      href: '/account/favorites',
-    });
+    // WHY try/catch: the favourite is already saved at this point. If the notification
+    // (email, socket, database) fails, an uncaught error returned a 500, so the app rolled the
+    // heart back and told the buyer it failed even though the listing WAS saved. Saving is the
+    // job; the notification is a courtesy, so its failure is logged and ignored.
+    try {
+      await notifyUser({
+        io: req.app.get('io'),
+        recipientId: buyer._id,
+        type: 'listing_saved',
+        title: 'Listing saved',
+        message: `“${listing.title}” was added to your saved listings.`,
+        href: '/account/favorites',
+      });
+    } catch (notifyError) {
+      console.error('[favorites] notification failed:', notifyError.message);
+    }
   }
   res.json({ items: await populateSavedItems(buyer.favoriteListings) });
 }));
@@ -1405,7 +1422,8 @@ marketplaceRouter.post('/:type/:id/checkout', requireAuth, validate(directChecko
   const listing = await config.Model.findOne({ _id: req.params.id, isActive: true, isVerified: true });
   if (!listing) throw new AppError(404, 'Listing is no longer available');
   const buyer = await User.findById(req.sellerId);
-  if (!buyer?.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
+  // WHY shared helper: see services/buyerIdentity.js. Approved KYC users must pass here.
+  if (!buyerIdentityReady(buyer)) throw new AppError(403, IDENTITY_REQUIRED_MESSAGE);
   const seller = await User.findById(listing.seller);
   const paymentOptions = effectivePaymentOptions(listing, seller);
   const checkoutMode = req.body.checkoutMode;

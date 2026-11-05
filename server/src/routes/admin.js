@@ -22,6 +22,7 @@ import { KycSubmission } from '../models/KycSubmission.js';
 import { privateKycAssetUrl } from '../services/privateKycStorage.js';
 import { notifyUser } from '../services/notifications.js';
 import { sendPromotionEmail } from '../services/mailer.js';
+import { syncVerifiedIdentity } from '../services/buyerIdentity.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -99,7 +100,9 @@ adminRouter.get('/kyc', asyncHandler(async (_req, res) => {
         idBackUrl: submission.idBackPublicId
           ? privateKycAssetUrl(submission.idBackPublicId, submission.idBackResourceType, submission.idBackFormat)
           : '',
-        selfieUrl: privateKycAssetUrl(submission.selfiePublicId, submission.selfieResourceType, submission.selfieFormat),
+        selfieUrl: submission.selfiePublicId ? privateKycAssetUrl(submission.selfiePublicId, submission.selfieResourceType, submission.selfieFormat) : '',
+        // WHY: with no selfie photo, the reviewer needs to see the face check passed.
+        livenessVerified: Boolean(submission.liveness?.verifiedAt),
         createdAt: submission.createdAt,
       })),
       ...legacyUsers,
@@ -127,6 +130,10 @@ adminRouter.post('/kyc/:userId/review', validate(kycReviewSchema), asyncHandler(
     kycReviewedAt: new Date(),
   }, { new: true });
   if (!user) throw new AppError(404, 'Account not found');
+  // WHAT: on approval, copy the verified name/ID onto the user. WHY: see syncVerifiedIdentity.
+  // WHY best-effort: approval itself already succeeded; a sync hiccup must not turn it into an error
+  // (checkout no longer depends on this copy because buyerIdentityReady trusts kycStatus).
+  if (req.body.status === 'verified') await syncVerifiedIdentity(user).catch((err) => console.error('[kyc] identity sync failed:', err.message));
   if (req.body.status === 'verified' && priorUser?.kycStatus !== 'verified') {
     await notifyUser({
       io: req.app.get('io'),

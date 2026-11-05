@@ -58,7 +58,7 @@ export function getDefaultPaymentOption(paymentOptions = {}) {
 }
 
 export function getListingAction(type) {
-  if (type === 'course') return 'Enrol now';
+  if (type === 'course') return 'Enroll';
   if (type === 'service') return 'Hire now';
   return 'Buy now';
 }

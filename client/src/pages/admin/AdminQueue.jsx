@@ -114,6 +114,7 @@ function KycRow({ user, note, onNote, onReview, busy }) {
       <p className="mt-1 text-sm text-ink/60">{user.email} · {user.businessName}</p>
       {user.dob && <p className="mt-2 text-sm">Date of birth: {new Date(user.dob).toLocaleDateString()}</p>}
       {user.idType && <p className="mt-1 text-sm">ID type: {user.idType}</p>}
+      {user.livenessVerified && <p className="mt-1 text-sm text-released">Face check passed (prompted blink, mouth and head turn)</p>}
       <p className="mt-1 text-sm">ID: <span className="font-mono">{user.idNumber || user.nin || 'Not provided'}</span></p>
       {documents.length > 0 && <ul className="mt-3 flex flex-wrap gap-3">{documents.map(([label, url]) => <li key={label}><a href={url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{label}</a></li>)}</ul>}
     </div>

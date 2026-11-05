@@ -14,6 +14,7 @@ import Gallery from '../components/listing-detail/Gallery.jsx';
 import RelatedListings from '../components/listing-detail/RelatedListings.jsx';
 import ReviewsSection from '../components/listing-detail/ReviewsSection.jsx';
 import SellerSection from '../components/listing-detail/SellerSection.jsx';
+import EnrollCheckout from '../components/listing-detail/EnrollCheckout.jsx';
 import StickyBuyBar from '../components/listing-detail/StickyBuyBar.jsx';
 import TermsSection from '../components/listing-detail/TermsSection.jsx';
 
@@ -69,7 +70,7 @@ function ReportForm({ listing, onClose, onToast }) {
   async function submit(event) {
     event.preventDefault();
     if (status !== 'authed') {
-      navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/sign-in?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
     setBusy(true);
@@ -158,6 +159,7 @@ export default function ListingDetailPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [reporting, setReporting] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
   const [actionError, setActionError] = useState('');
   const ownSellerId = String(seller?._id || seller?.id || seller?.sellerId || '');
   const isOwn = Boolean(listing && ownSellerId && ownSellerId === String(listing.sellerId));
@@ -177,9 +179,30 @@ export default function ListingDetailPage() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  // WHAT: run an action only for a signed-in buyer, otherwise send them to sign in and back here.
+  // WHY `next` keeps ?enroll=1: after signing in, the Enroll checkout reopens by itself instead of
+  // leaving the buyer to find the button again.
+  function requireAuthThen(action) {
+    if (status !== 'authed') {
+      navigate(`/sign-in?intent=buyer&next=${encodeURIComponent(`${window.location.pathname}?enroll=1`)}`);
+      return;
+    }
+    action();
+  }
+
+  // WHAT: open the Enroll dialog when the link says ?enroll=1 (from the "Enroll" button on a card).
+  // WHY wait for the listing and for a settled sign-in state: the dialog needs the listing, and a
+  // signed-out visitor should be sent to sign in rather than see a dialog that cannot pay.
+  const wantsEnroll = new URLSearchParams(window.location.search).get('enroll') === '1';
+  useEffect(() => {
+    if (!wantsEnroll || !listing || listing.type !== 'course' || isOwn || status === 'checking') return;
+    requireAuthThen(() => setEnrolling(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsEnroll, listing?.id, status]);
+
   async function addListingToCart(options) {
     if (status !== 'authed') {
-      navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/sign-in?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
       return false;
     }
     if (!listing || !options.paymentOption) {
@@ -202,7 +225,7 @@ export default function ListingDetailPage() {
 
   async function toggleSaved() {
     if (status !== 'authed') {
-      navigate(`/login?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/sign-in?intent=buyer&next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
     try {
@@ -252,6 +275,7 @@ export default function ListingDetailPage() {
             isSaved={saved}
             inCart={inCart}
             onAddToCart={addListingToCart}
+            onEnroll={() => requireAuthThen(() => setEnrolling(true))}
             onToggleSaved={toggleSaved}
             onReport={() => setReporting(true)}
             onMessageSeller={openMessagePanel}
@@ -270,7 +294,8 @@ export default function ListingDetailPage() {
           <RelatedListings listings={related} />
         </div>
       </main>
-      {!isOwn && listing.type !== 'service' && <StickyBuyBar listing={listing} disabled={busy || !paymentOption} onAddToCart={() => addListingToCart({ paymentOption, fulfilment, quantity })} />}
+      {!isOwn && listing.type !== 'service' && <StickyBuyBar listing={listing} disabled={busy || !paymentOption} onAddToCart={() => addListingToCart({ paymentOption, fulfilment, quantity })} onEnroll={() => requireAuthThen(() => setEnrolling(true))} />}
+      {enrolling && <EnrollCheckout listing={listing} onClose={() => setEnrolling(false)} onToast={setToast} />}
       {reporting && <ReportForm listing={listing} onClose={() => setReporting(false)} onToast={setToast} />}
       {toast && <p role="status" aria-live="polite" className="fixed bottom-20 right-4 z-50 max-w-sm rounded-xl border border-line bg-paper px-4 py-3 text-sm shadow-card-lg sm:bottom-5">{toast}</p>}
     </div>

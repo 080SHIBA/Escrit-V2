@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { uploadLimiter } from '../middleware/rateLimit.js';
+import { issueLivenessSession, verifyLivenessProof } from '../services/livenessSession.js';
 import { deletePrivateKycFile, privateKycAssetUrl, uploadPrivateKycFile } from '../services/privateKycStorage.js';
 
 export const kycRouter = Router();
@@ -19,7 +20,7 @@ const allowedImageTypes = new Set([
 ]);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_BYTES, files: 3, fields: 5, parts: 8 },
+  limits: { fileSize: MAX_FILE_BYTES, files: 3, fields: 8, parts: 11 },
   fileFilter(_req, file, callback) {
     const allowed = file.fieldname === 'idFront' || file.fieldname === 'idBack'
       ? allowedImageTypes.has(file.mimetype) || file.mimetype === 'application/pdf'
@@ -73,6 +74,10 @@ const fieldsSchema = Joi.object({
     otherwise: Joi.string().trim().min(6).max(40).required(),
   }),
   consent: Joi.string().valid('true').required(),
+  // WHAT: the signed session token and the browser's report of the finished face check.
+  // WHY optional in the schema: older clients still send a selfie photo instead.
+  livenessToken: Joi.string().max(2000).allow(''),
+  livenessProof: Joi.string().max(4000).allow(''),
 });
 
 function fileAsset(asset, prefix) {
@@ -111,11 +116,18 @@ kycRouter.get('/', asyncHandler(async (req, res) => {
       idBackUrl: submission.idBackPublicId
         ? privateKycAssetUrl(submission.idBackPublicId, submission.idBackResourceType, submission.idBackFormat)
         : '',
-      selfieUrl: privateKycAssetUrl(submission.selfiePublicId, submission.selfieResourceType, submission.selfieFormat),
+      selfieUrl: submission.selfiePublicId ? privateKycAssetUrl(submission.selfiePublicId, submission.selfieResourceType, submission.selfieFormat) : '',
+      livenessVerified: Boolean(submission.liveness?.verifiedAt),
       status: submission.status,
       reviewReason: submission.reviewReason || '',
     },
   });
+}));
+
+// WHAT: start a face check. WHY a route: the server chooses the prompts so they cannot be predicted.
+kycRouter.post('/liveness-session', uploadLimiter, asyncHandler(async (req, res) => {
+  const session = issueLivenessSession(req.sellerId, 'kyc');
+  res.json({ token: session.token, steps: session.steps, expiresAt: session.expiresAt });
 }));
 
 kycRouter.post('/', uploadLimiter, receiveKycFiles, asyncHandler(async (req, res) => {
@@ -127,7 +139,19 @@ kycRouter.post('/', uploadLimiter, receiveKycFiles, asyncHandler(async (req, res
   const front = files.idFront?.[0];
   const back = files.idBack?.[0];
   const selfie = files.selfie?.[0];
-  if (!front || !selfie) throw new AppError(400, 'Upload the front of your ID and a selfie before submitting.');
+  if (!front) throw new AppError(400, 'Upload the front of your ID before submitting.');
+  // WHAT: accept EITHER a passed face check OR (older clients) a selfie photo.
+  // WHY: the new flow registers liveness without taking a picture; the photo path keeps
+  // already-deployed clients working during rollout.
+  let liveness = null;
+  if (value.livenessToken) {
+    liveness = verifyLivenessProof({ token: value.livenessToken, proof: value.livenessProof, userId: req.sellerId, purpose: 'kyc' });
+    // WHY: a session may be used once. The unique index on liveness.sessionId is the final guard.
+    if (await KycSubmission.exists({ 'liveness.sessionId': liveness.sessionId })) {
+      throw new AppError(400, 'That face check was already used. Please run it again.');
+    }
+  }
+  if (!selfie && !liveness) throw new AppError(400, 'Complete the face check before submitting.');
   for (const file of [front, back, selfie].filter(Boolean)) {
     if (!fileSignatureMatches(file)) throw new AppError(400, 'A file does not match its selected image or PDF type.');
   }
@@ -143,7 +167,7 @@ kycRouter.post('/', uploadLimiter, receiveKycFiles, asyncHandler(async (req, res
     const uploads = await Promise.allSettled([
       uploadPrivateKycFile(front),
       back ? uploadPrivateKycFile(back) : Promise.resolve(null),
-      uploadPrivateKycFile(selfie),
+      selfie ? uploadPrivateKycFile(selfie) : Promise.resolve(null),
     ]);
     storedAssets = uploads.filter((result) => result.status === 'fulfilled' && result.value).map((result) => result.value);
     const failedUpload = uploads.find((result) => result.status === 'rejected');
@@ -156,7 +180,7 @@ kycRouter.post('/', uploadLimiter, receiveKycFiles, asyncHandler(async (req, res
       idBackUrl: backAsset
         ? privateKycAssetUrl(backAsset.publicId, backAsset.resourceType, backAsset.format)
         : '',
-      selfieUrl: privateKycAssetUrl(selfieAsset.publicId, selfieAsset.resourceType, selfieAsset.format),
+      selfieUrl: selfieAsset ? privateKycAssetUrl(selfieAsset.publicId, selfieAsset.resourceType, selfieAsset.format) : '',
     };
     const submission = await KycSubmission.findOneAndUpdate(
       { userId: req.sellerId },
@@ -169,6 +193,7 @@ kycRouter.post('/', uploadLimiter, receiveKycFiles, asyncHandler(async (req, res
         ...fileAsset(frontAsset, 'idFront'),
         ...fileAsset(backAsset, 'idBack'),
         ...fileAsset(selfieAsset, 'selfie'),
+        liveness: liveness ? { sessionId: liveness.sessionId, steps: liveness.steps, totalMs: liveness.totalMs, verifiedAt: new Date() } : { sessionId: null, steps: [], totalMs: 0, verifiedAt: null },
         status: 'pending',
         reviewReason: '',
         reviewedAt: null,

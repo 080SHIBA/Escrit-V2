@@ -33,7 +33,12 @@ cartCheckoutRouter.use('/me/recently-viewed', requireAuth);
 cartCheckoutRouter.use('/listings/similar', requireAuth);
 
 const listingTypes = ['product', 'course', 'service'];
-const cartListingTypes = ['product', 'course'];
+// WHAT: which listing types may go in the cart.
+// WHY only products: courses and services are bought immediately (a course grants access on
+// payment; a service needs its own scheduling and requirements). Grouping them in a cart made
+// no sense. Removal still accepts every type so old cart entries can be cleared.
+const cartListingTypes = ['product'];
+const instantListingTypes = ['course'];
 const listingIdSchema = Joi.string().hex().length(24);
 const cartPatchSchema = Joi.object({
   deliveryAddress: Joi.string().trim().max(500).allow(''),
@@ -64,7 +69,8 @@ const recentSchema = Joi.object({
 });
 
 async function getCartResponse(buyer) {
-  const productAndCourseItems = buyer.cartItems.filter((entry) => ['product', 'course'].includes(entry.listingType));
+  // WHY drop non-products: carts saved before this rule may hold courses; they are removed quietly.
+  const productAndCourseItems = buyer.cartItems.filter((entry) => entry.listingType === 'product');
   if (productAndCourseItems.length !== buyer.cartItems.length) {
     buyer.cartItems = productAndCourseItems;
     await buyer.save();
@@ -114,8 +120,15 @@ cartCheckoutRouter.post('/cart', validate(Joi.object({
   const fulfilmentOptions = offeredFulfilment === 'delivery-or-pickup'
     ? ['delivery', 'pickup']
     : [offeredFulfilment];
+  // WHAT: turn what the client sent into one concrete method (delivery or pickup).
+  // WHY: listings that offer both are described as 'delivery-or-pickup'. The marketplace
+  // card used to send that label as if it were a choice, and the check below rejected it
+  // because the allowed choices are only 'delivery' and 'pickup'. Those listings therefore
+  // could never be added from the card. A combined label now means "no preference yet",
+  // so we fall back to the default (delivery) and the buyer can change it in the cart.
+  const requestedFulfilment = fulfilment === 'delivery-or-pickup' ? '' : fulfilment;
   const fulfilmentChoice = listingType === 'product'
-    ? fulfilment || (offeredFulfilment === 'delivery-or-pickup' ? 'delivery' : offeredFulfilment)
+    ? requestedFulfilment || (offeredFulfilment === 'delivery-or-pickup' ? 'delivery' : offeredFulfilment)
     : '';
   if (listingType === 'product' && !fulfilmentOptions.includes(fulfilmentChoice)) {
     throw new AppError(409, 'That fulfilment option is not available for this listing.');
@@ -179,8 +192,9 @@ cartCheckoutRouter.delete('/cart/:listingType/:listingId', asyncHandler(async (r
   res.json(await getCartResponse(buyer));
 }));
 
-async function buildReview(buyer, choices, deliveryAddress) {
-  const savedItems = await populateSavedItems(buyer.cartItems);
+async function buildReview(buyer, choices, deliveryAddress, itemsOverride) {
+  // WHY itemsOverride: instant purchases (courses) review a single item that never enters the cart.
+  const savedItems = await populateSavedItems(itemsOverride || buyer.cartItems);
   if (!savedItems.length) throw new AppError(409, 'Your cart is empty');
   const links = await Link.find({
     _id: { $in: savedItems.map(({ listing }) => listing.escrowLinkId).filter(Boolean) },
@@ -195,14 +209,19 @@ async function buildReview(buyer, choices, deliveryAddress) {
     const listing = entry.listing;
     const listingId = String(listing._id);
     const key = `${entry.listingType}:${listingId}`;
+    // WHAT: the payment options that really apply (seller default + type rules).
+    // WHY not listing.paymentOptions: that raw field ignores the seller's account-level default
+    // and the "courses never use escrow" rule, so checkout could accept a payment method the
+    // listing page never offered.
+    const allowedPayment = effectivePaymentOptions(listing, listing.seller);
     const choice = choiceByKey.get(key) || {
       listingType: entry.listingType,
       listingId,
       quantity: entry.quantity,
-      paymentOption: listing.paymentOption || (listing.paymentOptions?.escrow ? 'escrow' : 'direct'),
-      fulfilment: listing.fulfilment || '',
+      paymentOption: entry.paymentOption || (allowedPayment.escrow ? 'escrow' : 'direct'),
+      fulfilment: entry.fulfilment || '',
     };
-    if (!listing.paymentOptions?.[choice.paymentOption]) {
+    if (!allowedPayment[choice.paymentOption]) {
       throw new AppError(409, `The selected payment method is no longer available for ${listing.title}.`);
     }
     const quantity = entry.listingType === 'product' ? choice.quantity : 1;
@@ -237,7 +256,7 @@ async function buildReview(buyer, choices, deliveryAddress) {
       processingFeeKobo: buyerPriceKobo - basePriceKobo,
       lineTotalKobo: buyerPriceKobo * quantity,
       releaseWindowHours,
-      termsSnapshot: transactionTermsSnapshot(listing, listing.paymentOptions, choice.paymentOption, fulfillment, releaseWindowHours),
+      termsSnapshot: transactionTermsSnapshot(listing, allowedPayment, choice.paymentOption, fulfillment, releaseWindowHours),
     });
   }
 
@@ -288,11 +307,14 @@ cartCheckoutRouter.post('/checkout/review', validate(Joi.object({
   res.json(reviewResponse(review));
 }));
 
-cartCheckoutRouter.post('/checkout/pay', validate(checkoutSchema), asyncHandler(async (req, res) => {
+// WHAT: create the payment for a reviewed set of orders. Shared by cart checkout and instant checkout.
+// WHY a shared function: the idempotency, demo-seller, bank-account and transaction-creation rules
+// must be identical however the buyer arrived, so there is exactly one copy of them.
+async function payForOrders(req, res, { orders, itemsOverride = null, callbackPath = '/cart' }) {
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(404, 'Account not found');
   const address = req.body.deliveryAddress || buyer.cartDeliveryAddress || '';
-  const review = await buildReview(buyer, req.body.orders, address);
+  const review = await buildReview(buyer, orders, address, itemsOverride);
   const requestHash = createHash('sha256').update(JSON.stringify({
     orders: review.lines.map((line) => ({
       listingType: line.listingType,
@@ -384,7 +406,7 @@ cartCheckoutRouter.post('/checkout/pay', validate(checkoutSchema), asyncHandler(
       email: buyer.email,
       amountKobo: review.totalKobo,
       reference,
-      callbackUrl: `${env.clientOrigins[0]}/cart?reference=${encodeURIComponent(reference)}`,
+      callbackUrl: `${env.clientOrigins[0]}${callbackPath}?reference=${encodeURIComponent(reference)}`,
       metadata: {
         checkoutAttemptId: String(attempt._id),
         transactionIds: transactions.map((transaction) => String(transaction._id)),
@@ -406,6 +428,34 @@ cartCheckoutRouter.post('/checkout/pay', validate(checkoutSchema), asyncHandler(
     if (transactions.length) await Transaction.deleteMany({ _id: { $in: transactions.map((transaction) => transaction._id) } });
     throw error;
   }
+}
+
+cartCheckoutRouter.post('/checkout/pay', validate(checkoutSchema), asyncHandler((req, res) => payForOrders(req, res, { orders: req.body.orders })));
+
+// WHAT: instant checkout for a single course, with no cart.
+// WHY: a course is bought on its own and grants access once paid. Review and pay reuse the
+// cart's code (buildReview / payForOrders), so pricing, fees and idempotency match exactly.
+const instantItemSchema = Joi.object({
+  listingType: Joi.string().valid(...instantListingTypes).required(),
+  listingId: listingIdSchema.required(),
+});
+function instantEntry(item) {
+  return { listingType: item.listingType, listingId: item.listingId, quantity: 1, paymentOption: 'direct', fulfilment: '' };
+}
+cartCheckoutRouter.post('/checkout/instant/review', validate(Joi.object({ item: instantItemSchema.required() })), asyncHandler(async (req, res) => {
+  const buyer = await User.findById(req.sellerId);
+  if (!buyer) throw new AppError(404, 'Account not found');
+  const entry = instantEntry(req.body.item);
+  const review = await buildReview(buyer, [], '', [entry]);
+  res.json(reviewResponse(review));
+}));
+cartCheckoutRouter.post('/checkout/instant/pay', validate(Joi.object({
+  idempotencyKey: Joi.string().trim().min(8).max(120).required(),
+  termsAccepted: Joi.boolean().valid(true).required(),
+  item: instantItemSchema.required(),
+})), asyncHandler((req, res) => {
+  const entry = instantEntry(req.body.item);
+  return payForOrders(req, res, { orders: [{ ...entry }], itemsOverride: [entry], callbackPath: '/cart' });
 }));
 
 cartCheckoutRouter.get('/checkout/status/:reference', asyncHandler(async (req, res) => {

@@ -65,7 +65,8 @@ export default function ListingCard({
           <Heart size={19} aria-hidden="true" className={isSaved ? 'fill-dispute text-dispute' : ''} />
         </button>
       </div>
-      <div className="space-y-2.5 p-4">
+      {/* WHY smaller padding on phones: the grid is 2 columns there, so cards are narrow and every pixel of padding costs title space. */}
+      <div className="space-y-2.5 p-3 sm:p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-xs font-medium text-ink/55">{listing.category}</span>
           <span className="shrink-0 text-[10px] font-medium text-ink/55">{listing.paymentOptionLabel || 'Payment options vary'}</span>
@@ -116,10 +117,10 @@ export default function ListingCard({
             </button>
           ) : (
             <Link
-              to={detailPath}
+              to={cardAction === 'enroll' ? `${detailPath}?enroll=1` : detailPath}
               className="inline-flex min-h-11 shrink-0 items-center rounded-lg bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
             >
-              {cardAction === 'request-quote' ? 'Request a quote' : 'Book now'}
+              {cardAction === 'request-quote' ? 'Request a quote' : cardAction === 'enroll' ? 'Enroll' : 'Book now'}
             </Link>
           )}
         </div>

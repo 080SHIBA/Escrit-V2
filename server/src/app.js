@@ -25,6 +25,7 @@ import { escrowLinksRouter } from './routes/escrowLinks.js';
 import { funnelEventsRouter } from './routes/funnelEvents.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { cartCheckoutRouter } from './routes/cartCheckout.js';
+import { draftsRouter } from './routes/drafts.js';
 import { getPlatformSettings } from './services/platformSettings.js';
 import { asyncHandler } from './middleware/asyncHandler.js';
 
@@ -67,6 +68,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api', cartCheckoutRouter);
   app.use('/api/profile', profileRouter);
+  app.use('/api/drafts', draftsRouter);
   app.use('/api/kyc', kycRouter);
   app.use('/api/seller', sellerRouter);
   app.use('/api/banks', bankResolverRouter);

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api.js';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { useCachedQuery } from './useCachedQuery.js';
@@ -26,8 +26,16 @@ export function useSaved() {
 
   const savedIds = useMemo(() => new Set(data || []), [data]);
 
+  // WHAT: ids with a save/unsave request currently in flight.
+  // WHY: a fast double-tap used to fire two requests that raced each other, and the
+  // second one read stale state, so the heart could end up the wrong way round.
+  // Ignoring taps on a listing until its previous request finishes keeps it consistent.
+  const pending = useRef(new Set());
+
   const toggleSaved = useCallback(async (listing) => {
     const listingId = String(listing.id);
+    if (pending.current.has(listingId)) return savedIds.has(listingId);
+    pending.current.add(listingId);
     const wasSaved = savedIds.has(listingId);
     // WHAT: optimistic update, undone if the server refuses.
     // WHY: the heart flips instantly instead of waiting on a slow server.
@@ -39,6 +47,8 @@ export function useSaved() {
     } catch (error) {
       setData((current = []) => (wasSaved ? [...current, listingId] : current.filter((id) => id !== listingId)));
       throw error;
+    } finally {
+      pending.current.delete(listingId);
     }
   }, [savedIds, setData]);
 

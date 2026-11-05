@@ -26,6 +26,7 @@ import { notifyDisputeRaised } from '../services/notificationEvents.js';
 import { recordFunnelEvent } from '../services/funnel.js';
 import { publicSellerName } from '../utils/publicSellerName.js';
 import { DEFAULT_RELEASE_WINDOW_HOURS } from '../shared/releaseConditions.js';
+import { buyerIdentityReady, IDENTITY_REQUIRED_MESSAGE } from '../services/buyerIdentity.js';
 
 export const publicRouter = Router();
 publicRouter.use(publicLimiter);
@@ -146,7 +147,8 @@ publicRouter.post('/:linkId/checkout', requireAuth, validate(checkoutSchema), as
   }
   const buyer = await User.findById(req.sellerId);
   if (!buyer) throw new AppError(401, 'Sign in to place an order');
-  if (!buyer.fullName || !buyer.nin) throw new AppError(403, 'Complete your identity details in Profile settings before checkout');
+  // WHY shared helper: see services/buyerIdentity.js. Approved KYC users must pass here.
+  if (!buyerIdentityReady(buyer)) throw new AppError(403, IDENTITY_REQUIRED_MESSAGE);
   const seller = await User.findById(link.sellerId);
   if (seller?.isDemoSeed) throw new AppError(409, 'Demo listings are for browsing only and cannot accept real payment.');
   const paymentContext = await paymentContextForLink(link, seller);

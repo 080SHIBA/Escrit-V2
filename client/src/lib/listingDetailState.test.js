@@ -19,7 +19,7 @@ test('normalizes product, course, and service detail records', () => {
     assert.deepEqual(listing.gallery, ['cover.jpg']);
   }
   assert.equal(getListingAction('product'), 'Buy now');
-  assert.equal(getListingAction('course'), 'Enrol now');
+  assert.equal(getListingAction('course'), 'Enroll');
   assert.equal(getListingAction('service'), 'Hire now');
 });
 

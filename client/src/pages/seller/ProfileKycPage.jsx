@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ShopifyIntegration from '../../components/ShopifyIntegration.jsx';
 import { CheckCircleIcon, ShieldCheckIcon } from '../../components/icons.jsx';
 import { useKyc } from '../../hooks/useKyc.js';
+import { useFormDraft } from '../../hooks/useFormDraft.js';
+import AutosaveStatus from '../../components/AutosaveStatus.jsx';
 import { useProfile } from '../../hooks/useProfile.js';
-import KycSelfieCamera from '../../components/KycSelfieCamera.jsx';
+import FaceLivenessCheck from '../../components/FaceLivenessCheck.jsx';
+import DocumentCaptureModal from '../../components/DocumentCaptureModal.jsx';
+import { clearPickerMark, dropStashedFile, pickerWasInterrupted, readStashedFile, stashFile } from '../../lib/fileStash.js';
+import { api } from '../../lib/api.js';
 import { useAuthContext } from '../../lib/AuthContext.jsx';
 import { kycMocksEnabled } from '../../lib/kycMocks.js';
 import {
@@ -89,49 +94,61 @@ export function StepperNav({ step, maxVisited, onSelect }) {
   );
 }
 
-export function FileDropzone({ label, file, onChange, allowPdf = false, capture, required = false }) {
+export function FileDropzone({ label, file, onChange, allowPdf = false, required = false, stashKey = '' }) {
   const [error, setError] = useState('');
-  const accept = allowPdf ? 'image/*,application/pdf' : 'image/*';
+  
+  const { seller } = useAuthContext();
+  const [modalOpen, setModalOpen] = useState(false);
+  // WHAT: scope the stash and the picker mark to the signed-in user and this field.
+  const pickerKey = `${seller?._id || seller?.id || 'anon'}:${stashKey || label}`;
+  const [interrupted] = useState(() => pickerWasInterrupted(pickerKey));
+
+  // WHAT: bring a previously chosen file back after a reload, and reopen the dialog if the page was killed mid-pick.
+  useEffect(() => {
+    let cancelled = false;
+    if (!file && stashKey) readStashedFile(pickerKey).then((restored) => { if (restored && !cancelled) onChange(restored); });
+    if (!file && interrupted) { setModalOpen(true); clearPickerMark(pickerKey); }
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function chooseFile(nextFile) {
     const validation = validateFile(nextFile, { allowPdf });
     setError(validation);
     onChange(validation ? null : nextFile);
+    // WHY stash: so the file survives a reload. Removing the file removes the stash.
+    if (stashKey) { if (!validation && nextFile) stashFile(pickerKey, nextFile); else dropStashedFile(pickerKey); }
   }
 
   return (
     <div>
-      <label className="block">
-        <span className="text-sm font-medium">{label}{required ? ' (required)' : ' (optional)'}</span>
-        <span
-          className="mt-2 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-strong bg-paper-2 p-4 text-center transition-colors hover:border-accent focus-within:outline focus-within:outline-2 focus-within:outline-focus"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            event.preventDefault();
-            chooseFile(event.dataTransfer.files?.[0]);
-          }}
-        >
-          <input
-            type="file"
-            accept={accept}
-            capture={capture}
-            required={required && !file}
-            aria-label={label}
-            onChange={(event) => {
-              chooseFile(event.target.files?.[0]);
-              event.target.value = '';
-            }}
-            className="sr-only"
-          />
-          <span className="text-sm font-semibold">{file ? 'Replace file' : 'Choose or drop a file'}</span>
-          <span className="mt-1 text-xs text-ink/55">{allowPdf ? 'Image or PDF, up to 5 MB' : 'Image, up to 5 MB'}</span>
-        </span>
-      </label>
+      <span className="text-sm font-medium">{label}{required ? ' (required)' : ' (optional)'}</span>
+      {/* WHAT: a button that opens the in-page capture dialog (see DocumentCaptureModal).
+          WHY not a file input: on phones a file input leaves the page, and low-memory phones can
+          reload it on return, losing the file. The dialog keeps the whole flow on this page. */}
+      <button
+        type="button"
+        onClick={() => setModalOpen(true)}
+        className="mt-2 flex min-h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-strong bg-paper-2 p-4 text-center transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+      >
+        <span className="text-sm font-semibold">{file ? 'Replace document' : 'Add document'}</span>
+        <span className="mt-1 text-xs text-ink/55">{allowPdf ? 'Take a photo, or choose an image or PDF (up to 5 MB)' : 'Take a photo or choose an image (up to 5 MB)'}</span>
+      </button>
+      {modalOpen && (
+        <DocumentCaptureModal
+          title={label}
+          allowPdf={allowPdf}
+          pickerKey={pickerKey}
+          notice={interrupted ? 'Your phone closed this page while you were choosing a file. Taking a photo here avoids that, and your answers were saved.' : ''}
+          onClose={() => setModalOpen(false)}
+          onSelect={(picked) => { setModalOpen(false); chooseFile(picked); }}
+        />
+      )}
       {file && !error && (
         <div className="mt-2 flex min-h-11 items-center gap-2 rounded-lg bg-released-soft px-3 py-2 text-sm text-released">
           <CheckCircleIcon aria-hidden="true" width={18} height={18} />
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
-          <button type="button" onClick={() => { onChange(null); setError(''); }} className="min-h-11 rounded-lg px-3 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Remove</button>
+          <button type="button" onClick={() => { onChange(null); setError(''); if (stashKey) dropStashedFile(pickerKey); }} className="min-h-11 rounded-lg px-3 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Remove</button>
         </div>
       )}
       {error && <p role="alert" className="mt-2 text-sm text-dispute">{error}</p>}
@@ -145,7 +162,7 @@ export function ReviewStep({ form, files, consent, onConsent }) {
   const documents = [
     ['ID front', files.idFront],
     ['ID back', files.idBack],
-    ['Selfie', files.selfie],
+    ['Face check', files.liveness ? { name: 'Completed' } : null],
   ];
   return (
     <div>
@@ -160,7 +177,7 @@ export function ReviewStep({ form, files, consent, onConsent }) {
         {documents.map(([label, file]) => (
           <li key={label} className="flex min-h-11 items-center gap-2 text-sm">
             <CheckCircleIcon className="text-released" width={18} height={18} />
-            <span>{label}: {file ? file.name : 'Not provided (optional)'}</span>
+            <span>{label}: {file ? file.name : label === 'ID back' ? 'Not provided (optional)' : 'Not provided'}</span>
           </li>
         ))}
       </ul>
@@ -206,11 +223,15 @@ function StepContent({ step, form, setForm, files, setFiles, consent, setConsent
   if (step === 1) {
     return (
       <div>
-        <h2 className="font-display text-xl">ID document</h2>
-        <p className="mt-1 text-sm text-ink/60">Make sure every detail is clear and readable.</p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <FileDropzone label="Front of ID" file={files.idFront} required allowPdf onChange={(file) => setFiles((current) => ({ ...current, idFront: file }))} />
-          <FileDropzone label="Back of ID" file={files.idBack} allowPdf onChange={(file) => setFiles((current) => ({ ...current, idBack: file }))} />
+        <h2 className="font-display text-xl">Face check</h2>
+        <p className="mt-1 text-sm text-ink/60">A quick live check that you’re really here. No photo is taken.</p>
+        <div className="mt-4">
+          {/* WHAT: guided, automatic face check. WHY onVerified stores a proof, not an image: see FaceLivenessCheck. */}
+          <FaceLivenessCheck
+            completed={Boolean(files.liveness)}
+            fetchSession={() => api.startKycLiveness()}
+            onVerified={(result) => setFiles((current) => ({ ...current, liveness: result }))}
+          />
         </div>
       </div>
     );
@@ -218,26 +239,55 @@ function StepContent({ step, form, setForm, files, setFiles, consent, setConsent
   if (step === 2) {
     return (
       <div>
-        <h2 className="font-display text-xl">Selfie check</h2>
-        <div className="mt-3 max-w-md"><KycSelfieCamera file={files.selfie} required onChange={(file) => setFiles((current) => ({ ...current, selfie: file }))} /></div>
+        <h2 className="font-display text-xl">ID document</h2>
+        <p className="mt-1 text-sm text-ink/60">Make sure every detail is clear and readable.</p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <FileDropzone label="Front of ID" stashKey="kyc-idFront" file={files.idFront} required allowPdf onChange={(file) => setFiles((current) => ({ ...current, idFront: file }))} />
+          <FileDropzone label="Back of ID" stashKey="kyc-idBack" file={files.idBack} allowPdf onChange={(file) => setFiles((current) => ({ ...current, idBack: file }))} />
+        </div>
       </div>
     );
   }
   return <ReviewStep form={form} files={files} consent={consent} onConsent={setConsent} />;
 }
 
+// WHAT: remove the locally stashed ID photos once they have been submitted.
+// WHY: they are personal documents; they should not linger in the browser after upload.
+function dropAllKycStashes(userId) {
+  ['kyc-idFront', 'kyc-idBack'].forEach((name) => dropStashedFile(`${userId || 'anon'}:${name}`));
+}
+
 export function KycWizard({ initialKyc, onSubmit, error, progress, onClearError }) {
-  const [step, setStep] = useState(0);
-  const [maxVisited, setMaxVisited] = useState(0);
-  const [form, setForm] = useState(() => ({
+  // WHAT: text answers, consent and the current step are autosaved to this device and the server.
+  // WHY: KYC is long and people get interrupted (calls, low data, a phone that kills the tab).
+  // They can now reload, sign out, or continue on another device and find the same answers.
+  // WHY files are not saved: a File cannot be serialised, and ID photos should not sit in a
+  // plain-text draft. After a restore the person re-adds only the photos, never retypes details.
+  const { seller } = useAuthContext();
+  const draft = useFormDraft('kyc', {
     legalName: initialKyc?.legalName || '',
     dob: initialKyc?.dob || '',
     idType: initialKyc?.idType || '',
     idNumber: initialKyc?.idNumber || '',
-  }));
-  const [files, setFiles] = useState({ idFront: null, idBack: null, selfie: null });
-  const [consent, setConsent] = useState(false);
+    consent: false,
+  }, { extraDefaults: { step: 0, maxVisited: 0 } });
+  const [files, setFiles] = useState({ idFront: null, idBack: null, liveness: null });
   const [submitted, setSubmitted] = useState(false);
+
+  // WHAT: adapters so the step components keep their existing setForm/setConsent API.
+  const form = draft.values;
+  const setForm = draft.setValues;
+  const consent = Boolean(draft.values.consent);
+  const setConsent = (value) => draft.setField('consent', Boolean(value));
+
+  // WHAT: the step to show, never past a step whose file is missing.
+  // WHY: files are not restored, so landing on "Review" with no photos would be a dead end.
+  const savedStep = Math.min(Number(draft.extra.step) || 0, KYC_STEPS.length - 1);
+  const furthestAllowed = !files.liveness ? 1 : !files.idFront ? 2 : KYC_STEPS.length - 1;
+  const step = Math.min(savedStep, furthestAllowed);
+  const maxVisited = Math.min(Math.max(step, Number(draft.extra.maxVisited) || 0), furthestAllowed);
+  const setStep = (next) => draft.setExtra('step', next);
+  const setMaxVisited = (updater) => draft.setExtra('maxVisited', typeof updater === 'function' ? updater(maxVisited) : updater);
   const stepError = validateStep(step, form, files, consent);
   const busy = progress !== null;
 
@@ -262,8 +312,14 @@ export function KycWizard({ initialKyc, onSubmit, error, progress, onClearError 
     const body = new FormData();
     Object.entries(form).forEach(([key, value]) => body.append(key, value));
     body.append('consent', 'true');
-    Object.entries(files).forEach(([key, file]) => { if (file) body.append(key, file); });
-    await onSubmit(body);
+    // WHAT: only real files are attached; the face-check result goes as two text fields.
+    // WHY: the server verifies the signed session and the timings instead of receiving a selfie.
+    ['idFront', 'idBack'].forEach((key) => { if (files[key]) body.append(key, files[key]); });
+    body.append('livenessToken', files.liveness.token);
+    body.append('livenessProof', JSON.stringify(files.liveness.proof));
+    // WHY clear only on success: if the upload fails, the answers must still be there to retry.
+    const accepted = await onSubmit(body);
+    if (accepted === true) { draft.clear(); dropAllKycStashes(seller?._id || seller?.id); }
   }
 
   return (
@@ -271,6 +327,7 @@ export function KycWizard({ initialKyc, onSubmit, error, progress, onClearError 
       <StepperNav step={step} maxVisited={maxVisited} onSelect={changeStep} />
       <section className="min-w-0 rounded-2xl border border-line bg-paper p-4 shadow-card sm:p-6">
         <div aria-live="polite" className="sr-only">{submitted && stepError ? stepError : ''}</div>
+        <div className="mb-3 flex min-h-5 justify-end"><AutosaveStatus state={draft.saveState} /></div>
         <StepContent step={step} form={form} setForm={setForm} files={files} setFiles={setFiles} consent={consent} setConsent={setConsent} onClearError={onClearError} />
         {error && <p role="alert" className="mt-4 rounded-xl border border-dispute/30 bg-dispute-soft p-3 text-sm text-dispute">{error}</p>}
         {busy && (
@@ -291,7 +348,7 @@ export function KycWizard({ initialKyc, onSubmit, error, progress, onClearError 
 }
 
 export function ProfileForm({ profile }) {
-  const { form, update, save, saving, saved, error } = profile;
+  const { form, update, save, saving, saved, error, saveState } = profile;
   async function submit(event) {
     event.preventDefault();
     await save();
@@ -317,6 +374,7 @@ export function ProfileForm({ profile }) {
           <input autoComplete="address-level2" maxLength={100} value={form.city} onChange={(event) => update('city', event.target.value)} className={FIELD_CLASS} />
         </label>
       </div>
+      <div className="mt-3 min-h-5"><AutosaveStatus state={saveState} /></div>
       {error && <p role="alert" className="mt-4 text-sm text-dispute">{error}</p>}
       {saved && <p role="status" className="mt-4 text-sm font-medium text-released">Profile saved.</p>}
       <button type="submit" disabled={saving} className="mt-5 min-h-11 w-full rounded-xl bg-accent px-5 text-sm font-semibold text-accent-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50">{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}</button>
@@ -430,6 +488,8 @@ export function ProfileKycPage() {
               onSubmit={async (formData) => {
                 const success = await kycController.submit(formData);
                 if (success) setRetrying(false);
+                // WHY return it: the wizard clears its autosaved draft only when the upload succeeded.
+                return success;
               }}
               error={kycController.error}
               progress={kycController.progress}

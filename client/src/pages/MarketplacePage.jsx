@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import FilterChips from '../components/marketplace/FilterChips.jsx';
 import ListingGrid from '../components/marketplace/ListingGrid.jsx';
@@ -7,10 +7,8 @@ import TypeSwitch from '../components/marketplace/TypeSwitch.jsx';
 import { useAuthContext } from '../lib/AuthContext.jsx';
 import { filterListings, filterServiceListings, MARKETPLACE_CATEGORIES_BY_TYPE, sortListings } from '../lib/marketplaceState.js';
 import { usePageTitle } from '../lib/usePageTitle.js';
-import { getDefaultPaymentOption } from '../lib/listingDetailState.js';
-import { useCart } from '../hooks/useCart.js';
 import { useListings } from '../hooks/useListings.js';
-import { useSaved } from '../hooks/useSaved.js';
+import { useListingActions } from '../hooks/useListingActions.js';
 
 function readFilters(searchParams) {
   const category = searchParams.get('category') || 'all';
@@ -28,6 +26,14 @@ function readFilters(searchParams) {
     verifiedProviders: searchParams.get('verifiedProviders') === 'true',
   };
 }
+
+// WHAT: how many listings each request fetches on the marketplace pages.
+// WHY 48: the first request has to fill several screens (12 rows of 4) so the
+// visitor can browse for a good while before the next page is needed. It is a
+// multiple of 4 so the last row of each page is never ragged, and well under the
+// server's cap of 100 per request. Further pages use the same size so the cache
+// key and merge logic stay simple.
+const MARKETPLACE_PAGE_SIZE = 48;
 
 const PAGE_CONTENT = {
   product: {
@@ -53,11 +59,9 @@ export default function MarketplacePage({ type = 'product' }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = readFilters(searchParams);
   const [queryInput, setQueryInput] = useState(filters.query);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState({ message: '', tone: 'success' });
   const { seller } = useAuthContext();
-  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings({ pageSize: 24, type });
-  const { cartIds, addToCart } = useCart();
-  const { savedIds, toggleSaved } = useSaved();
+  const { listings, loading, loadingMore, error, hasMore, retry, loadMore } = useListings({ pageSize: MARKETPLACE_PAGE_SIZE, type });
   const ownSellerId = seller?._id || seller?.id || seller?.sellerId || '';
 
   useEffect(() => {
@@ -78,11 +82,17 @@ export default function MarketplacePage({ type = 'product' }) {
     return () => window.clearTimeout(timeout);
   }, [filters.query, queryInput, setSearchParams]);
 
+  // WHAT: show a toast, then clear it. Errors stay longer than successes.
+  // WHY: a 3-second error is easy to miss, which made failed saves look silent.
+  // Errors get 7 seconds, and use role="alert" below so screen readers announce them.
+  const notify = useCallback((message, tone = 'success') => setToast({ message, tone }), []);
   useEffect(() => {
-    if (!toast) return undefined;
-    const timeout = window.setTimeout(() => setToast(''), 3200);
+    if (!toast.message) return undefined;
+    const timeout = window.setTimeout(() => setToast({ message: '', tone: 'success' }), toast.tone === 'error' ? 7000 : 3200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  const { cartIds, savedIds, handleToggleSaved, handleAddToCart } = useListingActions({ notify });
 
   function updateFilter(name, value) {
     setSearchParams((current) => {
@@ -105,29 +115,6 @@ export default function MarketplacePage({ type = 'product' }) {
     return Boolean(ownSellerId && listing.sellerId === ownSellerId);
   }
 
-  async function handleAddToCart(listing) {
-    if (isOwnListing(listing)) return;
-    try {
-      await addToCart(listing, {
-        paymentOption: getDefaultPaymentOption(listing.paymentOptions),
-        fulfilment: listing.type === 'product' ? listing.fulfillmentMethod || '' : '',
-        quantity: 1,
-      });
-      setToast(`${listing.title} added to cart.`);
-    } catch {
-      setToast('We couldn’t add this listing to your cart. Please try again.');
-    }
-  }
-
-  async function handleToggleSaved(listing) {
-    try {
-      const saved = await toggleSaved(listing);
-      setToast(saved ? `${listing.title} saved for later.` : 'Listing removed from saved listings.');
-    } catch {
-      setToast('We couldn’t update your saved listings. Please try again.');
-    }
-  }
-
   const visibleListings = useMemo(() => {
     const matching = filterListings(listings, {
       q: filters.query,
@@ -146,8 +133,10 @@ export default function MarketplacePage({ type = 'product' }) {
     return sortListings(serviceFiltered, filters.sort);
   }, [filters, listings, type]);
 
+  // WHY max-w-[1440px] on the page container: four columns of readable cards need
+  // more than the old 1280px; the extra width keeps each card about 330px wide.
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           {seller && (
@@ -237,7 +226,15 @@ export default function MarketplacePage({ type = 'product' }) {
         onToggleSaved={handleToggleSaved}
       />
 
-      {toast && <div role="status" aria-live="polite" className="fixed bottom-5 right-5 z-[70] max-w-sm rounded-xl border border-line bg-paper px-4 py-3 text-sm text-ink shadow-card-lg">{toast}</div>}
+      {toast.message && (
+        <div
+          role={toast.tone === 'error' ? 'alert' : 'status'}
+          aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}
+          className={`fixed bottom-5 right-5 z-[70] max-w-sm rounded-xl border px-4 py-3 text-sm text-ink shadow-card-lg ${toast.tone === 'error' ? 'border-dispute/40 bg-dispute-soft' : 'border-line bg-paper'}`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

@@ -53,7 +53,7 @@ async function refreshAccessToken() {
   return refreshPromise;
 }
 
-async function request(path, { method = 'GET', body, auth = false, signal } = {}, isRetry = false) {
+async function request(path, { method = 'GET', body, auth = false, signal, keepalive = false } = {}, isRetry = false) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
@@ -63,13 +63,16 @@ async function request(path, { method = 'GET', body, auth = false, signal } = {}
     credentials: 'include', // sends the refresh cookie
     body: body ? JSON.stringify(body) : undefined,
     signal,
+    // WHY keepalive: lets a request started while the tab is closing (autosave
+    // flush on pagehide) finish after the page is gone.
+    keepalive,
   });
 
   // Retry once after refreshing, but never for the refresh call itself.
   if (res.status === 401 && auth && !isRetry && path !== '/auth/refresh') {
     try {
       await refreshAccessToken();
-      return request(path, { method, body, auth, signal }, true);
+      return request(path, { method, body, auth, signal, keepalive }, true);
     } catch {
       accessToken = null;
       throw new Error('Your session expired. Please log in again.');
@@ -327,6 +330,11 @@ export const api = {
   removeSavedListing: (type, id) => marketplaceMocksEnabled
     ? marketplaceMockHandlers.unsaveListing(type, id)
     : request(`/marketplace/me/favorites/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
+  // Autosaved form drafts (see hooks/useFormDraft.js).
+  startKycLiveness: () => request('/kyc/liveness-session', { method: 'POST', auth: true }),
+  getFormDraft: (key) => request(`/drafts/${encodeURIComponent(key)}`, { auth: true }),
+  saveFormDraft: (key, data, clientUpdatedAt, { keepalive = false } = {}) => request(`/drafts/${encodeURIComponent(key)}`, { method: 'PUT', body: { data, clientUpdatedAt }, auth: true, keepalive }),
+  deleteFormDraft: (key) => request(`/drafts/${encodeURIComponent(key)}`, { method: 'DELETE', auth: true }),
   getMarketplace: (type = 'product') => request(`/marketplace/${type}`),
   getCategories: (type) => request(`/marketplace/categories/${type}`),
   getMarketplaceOverview: () => request('/marketplace/overview'),
@@ -485,6 +493,9 @@ export const api = {
     if (result.status === 'confirmed') notifyCartChanged();
     return result;
   },
+  // Instant checkout (courses): one item, no cart. See server routes/cartCheckout.js.
+  reviewInstant: (item) => request('/checkout/instant/review', { method: 'POST', body: { item }, auth: true }),
+  payInstant: (payload) => request('/checkout/instant/pay', { method: 'POST', body: payload, auth: true }),
   getCheckoutStatus: async (reference) => {
     const result = marketplaceMocksEnabled
       ? await marketplaceMockHandlers.getCheckoutStatus(reference)

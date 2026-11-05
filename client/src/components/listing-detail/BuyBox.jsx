@@ -17,6 +17,7 @@ function productFulfilment(listing) {
 }
 
 export default function BuyBox({
+  onEnroll,
   listing,
   isOwn,
   isSaved,
@@ -313,8 +314,10 @@ export default function BuyBox({
       )}
 
       <div className="mt-5 border-t border-line pt-5">
-        <PaymentOptionPicker options={listing.paymentOptions} value={paymentOption} onChange={onPaymentOptionChange} />
-        {choicesForPayment(listing.paymentOptions).length > 1 && listing.paymentOptions?.[paymentOption] && (
+        {listing.type === 'course'
+          ? <p className="text-xs leading-5 text-ink/65">Instant access after payment. Courses are not held in escrow.</p>
+          : <PaymentOptionPicker options={listing.paymentOptions} value={paymentOption} onChange={onPaymentOptionChange} />}
+        {listing.type !== 'course' && choicesForPayment(listing.paymentOptions).length > 1 && listing.paymentOptions?.[paymentOption] && (
           <p className="mt-2 text-xs leading-5 text-ink/65">
             {paymentOption === 'escrow'
               ? 'Payment is held until you confirm completion or the default window ends. Dispute before release.'
@@ -324,7 +327,11 @@ export default function BuyBox({
       </div>
 
       <div className="mt-5 grid gap-2">
-        {listing.type !== 'service' ? <>
+        {listing.type === 'course' ? (
+          // WHAT: courses are enrolled in directly: no cart, no payment-method picker.
+          // WHY: access is granted on payment and escrow never applies (see shared/listingTypePolicy.js).
+          <button type="button" onClick={onEnroll} disabled={busy} className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent/90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">Enroll</button>
+        ) : listing.type !== 'service' ? <>
           <button type="button" onClick={() => onAddToCart({ paymentOption, fulfilment, quantity })} disabled={busy || !paymentOption || (listing.type === 'product' && Number(listing.stock) < 1)} className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent/90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
             {busy ? 'Updating…' : inCart ? 'Update cart' : 'Add to cart'}
           </button>

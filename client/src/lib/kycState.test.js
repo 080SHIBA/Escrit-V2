@@ -32,10 +32,10 @@ test('personal details require two name words, a valid DOB and a matching ID num
 
 test('each wizard step validates its own required fields and documents', () => {
   assert.equal(validateStep(0, validForm, {}, false), '');
-  assert.match(validateStep(1, validForm, {}, false), /front of your ID/);
-  assert.equal(validateStep(1, validForm, { idFront: image() }, false), '');
-  assert.match(validateStep(2, validForm, { idFront: image() }, false), /selfie/);
-  assert.equal(validateStep(2, validForm, { selfie: image() }, false), '');
+  assert.match(validateStep(1, validForm, {}, false), /face check/i);
+  assert.equal(validateStep(1, validForm, { liveness: { token: 't', proof: {} } }, false), '');
+  assert.match(validateStep(2, validForm, {}, false), /front of your ID/);
+  assert.equal(validateStep(2, validForm, { idFront: image() }, false), '');
   assert.match(validateStep(3, validForm, {}, false), /Confirm/);
   assert.equal(validateStep(3, validForm, {}, true), '');
 });
